@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import os
 
 # 1. Configuración de la página
 st.set_page_config(
@@ -16,20 +15,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. Definir la ruta base de Google Drive en tu PC
-# (Ajustá esta ruta si tus archivos están en otra subcarpeta dentro de G:\Mi unidad)
-DRIVE_PATH = r"G:\Mi unidad"
-
-# 3. Función robusta para leer Excel localmente
+# 2. Función para leer el Excel directamente desde tu Google Drive en la nube
 @st.cache_data(ttl=600)
-def load_local_excel(folder_name, file_name, sheet_name, header_row=0):
+def load_excel_from_drive(file_id, sheet_name, header_row=0):
     try:
-        file_path = os.path.join(DRIVE_PATH, folder_name, file_name)
-        df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row)
+        url = f"https://docs.google.com/spreadsheets/d/19OVD6xBeK08o4cW1XrdMr54L1nciAJC2/export?format=xlsx"
+        df = pd.read_excel(url, sheet_name=sheet_name, header=header_row)
         df.columns = df.columns.str.strip()
         return df
     except Exception as e:
-        st.error(f"No se pudo leer el archivo '{file_name}': {e}")
+        st.error(f"Error al leer el archivo desde Google Drive: {e}")
         return pd.DataFrame()
 
 # Menú lateral
@@ -53,43 +48,42 @@ with st.sidebar:
 # =====================================================================
 if modulo == "🥛 Recepción Coopagro":
     st.markdown('<p class="main-header">Recepción de Materia Prima — Coopagro</p>', unsafe_allow_html=True)
-    st.markdown("Lectura directa desde el archivo sincronizado en Google Drive.")
+    st.markdown("Panel conectado automáticamente a Google Drive.")
     
-    # Nombre de tu carpeta en Drive y nombre exacto del archivo
-    CARPETA_DRIVE = "App Muzzarella Coopagro" # Cambialo por el nombre real de tu carpeta si es distinto
-    NOMBRE_ARCHIVO = "Resumen planilla Recibo  OD-PRO-03.xlsx"
+    # PEGA TU FILE ID ACÁ ENTRE LAS COMILLAS
+    FILE_ID_RECIBO = "TU_FILE_ID_AQUI" 
     
-    # Cargamos la solapa 'Résumen OD-PRO-03' (el encabezado real está en la fila 4, índice 4)
-    df_recibo = load_local_excel(CARPETA_DRIVE, NOMBRE_ARCHIVO, sheet_name="Résumen OD-PRO-03", header_row=4)
-    
-    if not df_recibo.empty:
-        # Limpiamos filas vacías si las hubiera
-        df_recibo = df_recibo.dropna(subset=['Fecha'])
-        
-        # Filtro por Tambo
-        col1, col2 = st.columns(2)
-        with col1:
-            tambos = ["Todos"] + sorted(df_recibo['Tambo'].dropna().unique().tolist()) if 'Tambo' in df_recibo.columns else ["Todos"]
-            tambo_sel = st.selectbox("Filtrar por Tambo:", tambos)
-            
-        df_view = df_recibo.copy()
-        if tambo_sel != "Todos":
-            df_view = df_view[df_view['Tambo'] == tambo_sel]
-            
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Mostramos métricas rápidas arriba
-        if 'Litros\n(Ticket)' in df_view.columns:
-            total_litros = df_view['Litros\n(Ticket)'].sum()
-            col_m1, col_m2 = st.columns(2)
-            col_m1.metric("Litros Totales (Ticket)", f"{total_litros:,.0f} L")
-            col_m2.metric("Total Registros", len(df_view))
-            st.markdown("<br>", unsafe_allow_html=True)
-
-        # Tabla interactiva
-        st.dataframe(df_view, use_container_width=True, hide_index=True)
+    if FILE_ID_RECIBO == "TU_FILE_ID_AQUI":
+        st.warning("⚠️ Por favor, configurá tu FILE_ID de Google Drive en el código del `app.py` para ver los datos.")
     else:
-        st.warning("Verificá que el nombre de la carpeta y del archivo de recepción coincidan exactamente en tu Google Drive.")
+        # Cargamos la solapa 'Résumen OD-PRO-03' (encabezado real en la fila 4)
+        df_recibo = load_excel_from_drive(FILE_ID_RECIBO, sheet_name="Résumen OD-PRO-03", header_row=4)
+        
+        if not df_recibo.empty:
+            df_recibo = df_recibo.dropna(subset=['Fecha'])
+            
+            # Filtro por Tambo
+            col1, col2 = st.columns(2)
+            with col1:
+                tambos = ["Todos"] + sorted(df_recibo['Tambo'].dropna().unique().tolist()) if 'Tambo' in df_recibo.columns else ["Todos"]
+                tambo_sel = st.selectbox("Filtrar por Tambo:", tambos)
+                
+            df_view = df_recibo.copy()
+            if tambo_sel != "Todos":
+                df_view = df_view[df_view['Tambo'] == tambo_sel]
+                
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            if 'Litros\n(Ticket)' in df_view.columns:
+                total_litros = df_view['Litros\n(Ticket)'].sum()
+                col_m1, col_m2 = st.columns(2)
+                col_m1.metric("Litros Totales (Ticket)", f"{total_litros:,.0f} L")
+                col_m2.metric("Total Registros", len(df_view))
+                st.markdown("<br>", unsafe_allow_html=True)
+
+            st.dataframe(df_view, use_container_width=True, hide_index=True)
+        else:
+            st.error("No se pudieron leer los datos. Verificá que el archivo esté compartido públicamente como 'Lector'.")
 
 elif modulo != "🥛 Recepción Coopagro":
     st.info("Módulo en desarrollo...")
