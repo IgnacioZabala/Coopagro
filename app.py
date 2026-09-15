@@ -136,7 +136,7 @@ def cargar_datos_mastellone(url_mastellone):
     xls = pd.ExcelFile(url_mastellone)
     # Buscamos de forma exacta o flexible la solapa 'litros mes'
     sheet_name = next(
-        (s for s in xls.sheet_names if "litro" in s.lower() or "mes" in s.lower()),
+        (s for s in xls.sheet_names if "litros" in s.lower() or "mes" in s.lower()),
         xls.sheet_names[0],
     )
     df_mast = pd.read_excel(url_mastellone, sheet_name=sheet_name)
