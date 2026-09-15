@@ -134,9 +134,10 @@ def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
 def cargar_datos_mastellone(url_mastellone):
   try:
     xls = pd.ExcelFile(url_mastellone)
+    # Buscamos de forma exacta o flexible la solapa 'litros mes'
     sheet_name = next(
         (s for s in xls.sheet_names if "litro" in s.lower() or "mes" in s.lower()),
-        xls.sheet_names[1] if len(xls.sheet_names) > 1 else xls.sheet_names[0],
+        xls.sheet_names[0],
     )
     df_mast = pd.read_excel(url_mastellone, sheet_name=sheet_name)
     df_mast.columns = df_mast.columns.astype(str).str.strip()
@@ -442,14 +443,14 @@ def generar_pdf_bytes(
     headers.append(("Prot", 20))
     mapeo.append(
         lambda r: f"{getattr(r, 'Proteina'):.2f}%".replace(".", ",")
-        if pd.notna(getattr(r, 'Proteina', pd.NA))
+        if pd.notna(getattr(r, "Proteina", pd.NA))
         else "-"
     )
   if args_visibles["crios"]:
     headers.append(("Crios", 22))
     mapeo.append(
         lambda r: f"{getattr(r, 'Crioscopia'):.3f}".replace(".", ",")
-        if pd.notna(getattr(r, 'Crioscopia', pd.NA))
+        if pd.notna(getattr(r, "Crioscopia", pd.NA))
         else "-"
     )
   if args_visibles["ufc"]:
@@ -518,7 +519,7 @@ def enviar_correo_productor(
 # --- MENÚ DE NAVEGACIÓN PRINCIPAL DE LA SUPER APP ---
 with st.sidebar:
   if os.path.exists("logo.png"):
-    st.image("logo.png", width=160)
+    st.image("logo.png", width=220)  # Logo más grande y proporcional
   st.markdown("---")
 
   modulo_principal = st.radio(
@@ -1187,7 +1188,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
 
 # =========================================================================
-# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN) - FILTRO DE MES ROBUSTO
+# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN) - SOLUCIÓN LITROS MES
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.markdown(
@@ -1232,11 +1233,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       # 2. Leer Litros Mes desde Datos MHSA.xlsx (Solapa 'litros mes')
       df_mast_litros = cargar_datos_mastellone(URL_MASTELLONE)
 
-      # Lógica robusta para leer columnas de mes, año y litros de la solapa 'litros mes'
       df_mast_litros_procesado = pd.DataFrame()
       if not df_mast_litros.empty:
-        # Identificamos la columna de litros (buscando palabras clave o tomando la última)
+        # Identificamos la columna de litros y la columna de mes/fecha con total precisión
         cols_lower = [str(c).lower() for c in df_mast_litros.columns]
+        
         col_litros = next(
             (
                 df_mast_litros.columns[i]
@@ -1246,39 +1247,34 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_mast_litros.columns[-1],
         )
 
-        # Buscamos columnas de fecha, mes o año
         col_fecha = next(
             (
                 df_mast_litros.columns[i]
                 for i, c in enumerate(cols_lower)
                 if any(x in c for x in ["fecha", "mes", "periodo", "date"])
             ),
-            None,
+            df_mast_litros.columns[0],
         )
 
         df_mast_litros_procesado["Litros"] = pd.to_numeric(
             df_mast_litros[col_litros], errors="coerce"
         ).fillna(0)
 
-        if col_fecha:
-          # Intentamos parsear fechas completas
-          fechas_parsed = pd.to_datetime(
+        # Intentamos interpretar la columna de mes/fecha
+        fechas_parsed = pd.to_datetime(
+            df_mast_litros[col_fecha], errors="coerce"
+        )
+        if fechas_parsed.notna().any():
+          df_mast_litros_procesado["Año"] = fechas_parsed.dt.year
+          df_mast_litros_procesado["Mes"] = fechas_parsed.dt.month
+        else:
+          # Si son números de mes (1 al 12) o nombres de meses por fila
+          df_mast_litros_procesado["Mes"] = pd.to_numeric(
               df_mast_litros[col_fecha], errors="coerce"
           )
-          if fechas_parsed.notna().any():
-            df_mast_litros_procesado["Año"] = fechas_parsed.dt.year
-            df_mast_litros_procesado["Mes"] = fechas_parsed.dt.month
-          else:
-            # Si contiene números de mes directos (1 al 12)
-            df_mast_litros_procesado["Mes"] = pd.to_numeric(
-                df_mast_litros[col_fecha], errors="coerce"
-            )
-            df_mast_litros_procesado["Año"] = 2026  # Año por defecto
-        else:
-          # Si no hay columna de fecha clara, mapeamos por número de fila (Fila 0 = Enero, Fila 7 = Agosto, etc.)
-          df_mast_litros_procesado["Mes"] = range(
-              1, len(df_mast_litros_procesado) + 1
-          )
+          # Si no hay mes numérico, asumimos orden de filas (Fila 0 = Enero, ..., Fila 7 = Agosto)
+          if df_mast_litros_procesado["Mes"].isna().all():
+            df_mast_litros_procesado["Mes"] = range(1, len(df_mast_litros_procesado) + 1)
           df_mast_litros_procesado["Año"] = 2026
 
     # --- BARRA LATERAL (FILTROS) ---
