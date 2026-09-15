@@ -25,7 +25,7 @@ st.markdown("""
 def load_recibo_data(file_id):
     try:
         url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
-        df = pd.read_excel(url, sheet_name="Résumen OD-PRO-03", header=4)
+        df = pd.read_excel(url, sheet_name="Resumen OD-PRO-03", header=4)
         df.columns = df.columns.str.strip()
         
         # Limpieza y formateo de fechas
