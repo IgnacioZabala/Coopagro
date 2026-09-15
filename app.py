@@ -519,7 +519,7 @@ def enviar_correo_productor(
 # --- MENÚ DE NAVEGACIÓN PRINCIPAL DE LA SUPER APP ---
 with st.sidebar:
   if os.path.exists("logo.png"):
-    st.image("logo.png", width=260)  # Logo más grande y proporcional
+    st.image("logo.png", width=300)  # Logo más grande y proporcional
   st.markdown("---")
 
   modulo_principal = st.radio(
