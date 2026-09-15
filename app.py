@@ -35,7 +35,7 @@ st.markdown(
 FILE_ID_REMITOS = "16Uh0EwP8tyW79TfJlvcjE8li5Lc6RSLj"
 FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
-FILE_ID_MASTELLONE = "1zNk6whrwaFucv0d7Vkab5rkJduIHzeAg"
+FILE_ID_MASTELLONE = "TU_FILE_ID_DATOS_MHSA_AQUI"  # <-- REEMPLAZÁ ESTO CON EL ID REAL DE Datos MHSA.xlsx
 ID_PRODUCCION = "1wuIpzYmVuflX_pWoPt4Pz9olWF4LLKOf"
 
 URL_REMITOS = (
@@ -263,7 +263,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       # Procesar fechas y litros del archivo de Mastellone para que cruce por mes y año
       if not df_mast_litros.empty:
-        # Detectar columna de fecha automáticamente en la solapa 'litros mes'
         col_fecha_mast = next(
             (
                 c
@@ -272,7 +271,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             ),
             df_mast_litros.columns[0],
         )
-        # Detectar columna de litros
         col_litros_mast = next(
             (
                 c
@@ -439,15 +437,14 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.markdown(
-      '<p class="main-header">Registro de Producción y Ecuación de Van'
-      " Slyke</p>",
+      '<p class="main-header">Registro de Producción y Ecuación de Van Slyke</p>',
       unsafe_allow_html=True,
   )
   st.info("Módulo en desarrollo para análisis global de rendimiento.")
 
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
   st.markdown(
-      '<p class="main-header">Gestión de Insumos y Costos Variables</p>",
+      '<p class="main-header">Gestión de Insumos y Costos Variables</p>',
       unsafe_allow_html=True,
   )
   st.info("Módulo en desarrollo para control de stock y costos.")
