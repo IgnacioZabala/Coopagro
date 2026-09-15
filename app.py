@@ -1188,12 +1188,11 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
 
 # =========================================================================
-# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN) - SOLUCIÓN LITROS MES
+# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN)
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.markdown(
-      '<p class="main-header">🏭 Reporte de Producción y Recepción — Fasón'
-      " Mastellone</p>",
+      '<p class="main-header">🏭 Reporte de Producción y Recepción — Fasón Mastellone</p>',
       unsafe_allow_html=True,
   )
 
@@ -1230,14 +1229,13 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-    # 2. Leer Litros Mes desde Datos MHSA.xlsx (Solapa 'litros mes')
+      # 2. Leer Litros Mes desde Datos MHSA.xlsx (Solapa 'litros mes')
       df_mast_litros = cargar_datos_mastellone(URL_MASTELLONE)
 
       df_mast_litros_procesado = pd.DataFrame()
       if not df_mast_litros.empty:
         cols_lower = [str(c).lower() for c in df_mast_litros.columns]
         
-        # 1. Identificamos la columna de litros sin importar variaciones del nombre
         col_litros = next(
             (
                 df_mast_litros.columns[i]
@@ -1250,7 +1248,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_mast_litros[col_litros], errors="coerce"
         ).fillna(0)
 
-        # 2. NUEVA LÓGICA BLINDADA: Buscar "subcadenas" para evitar errores por espacios o nombres como "Mes del año"
+        # Búsqueda robusta de Mes y Año
         idx_mes = next((i for i, c in enumerate(cols_lower) if "mes" in c), None)
         idx_anio = next((i for i, c in enumerate(cols_lower) if "año" in c or "anio" in c), None)
 
@@ -1259,8 +1257,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             col_anio = df_mast_litros.columns[idx_anio]
             df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros[col_mes], errors="coerce").fillna(1).astype(int)
             df_mast_litros_procesado["Año"] = pd.to_numeric(df_mast_litros[col_anio], errors="coerce").fillna(2026).astype(int)
-        
-        # 3. Fallback: Si no existen las columnas por separado, intentar deducir la fecha
         else:
             col_fecha = next(
                 (
@@ -1270,8 +1266,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 ),
                 df_mast_litros.columns[0],
             )
-            
-            # Filtramos para evitar que convierta los números simples a 1970
             fechas_parsed = pd.to_datetime(df_mast_litros[col_fecha], errors="coerce", dayfirst=True)
             if fechas_parsed.notna().any() and fechas_parsed.dt.year.max() > 1970:
                 df_mast_litros_procesado["Año"] = fechas_parsed.dt.year
@@ -1280,7 +1274,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros[col_fecha], errors="coerce").fillna(1).astype(int)
                 df_mast_litros_procesado["Año"] = 2026
 
-       # --- BARRA LATERAL (FILTROS) ---
+    # --- ÚNICA BARRA LATERAL DE FILTROS PARA MASTELLONE ---
     st.sidebar.markdown("### 🔍 Filtros Mastellone")
     opciones_anio = ["Todos"] + (
         sorted(df_mastellone_prod["Año"].unique().tolist())
@@ -1290,7 +1284,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     opciones_mes = ["Todos"] + list(range(1, 13))
 
     with st.sidebar.container():
-      # Usamos keys únicas que no choquen con ninguna otra sección de la app
       filtro_anio = st.selectbox("📅 Seleccionar Año", opciones_anio, key="m_anio_mastellone")
       filtro_mes = st.selectbox("📆 Seleccionar Mes", opciones_mes, key="m_mes_mastellone")
 
@@ -1342,97 +1335,20 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           ]
       )
 
-    # --- OBTENER LITROS INGRESADOS FILTRADOS ESTRICTAMENTE POR AÑO Y MES ---
-    total_litros_ingresados = 0.0
-    if not df_mast_litros_procesado.empty:
-      df_litros_f = df_mast_litros_procesado.copy()
-      
-      # Forzamos los filtros a "int" para evitar que diferencias de tipo en Pandas rompan el cruce
-      if filtro_anio != "Todos" and "Año" in df_litros_f.columns:
-        try:
-          f_anio = int(float(filtro_anio))
-          df_litros_f = df_litros_f[df_litros_f["Año"] == f_anio]
-        except ValueError:
-          pass
-          
-      if filtro_mes != "Todos" and "Mes" in df_litros_f.columns:
-        try:
-          f_mes = int(float(filtro_mes))
-          df_litros_f = df_litros_f[df_litros_f["Mes"] == f_mes]
-        except ValueError:
-          pass
-          
-      total_litros_ingresados = df_litros_f["Litros"].sum()
-
-    # --- BARRA LATERAL (FILTROS) ---
-    st.sidebar.markdown("### 🔍 Filtros Mastellone")
-    opciones_anio = ["Todos"] + (
-        sorted(df_mastellone_prod["Año"].unique().tolist())
-        if len(df_mastellone_prod) > 0
-        else [2026]
-    )
-    opciones_mes = ["Todos"] + list(range(1, 13))
-
-    with st.sidebar.container():
-      filtro_anio = st.selectbox("📅 Seleccionar Año", opciones_anio, key="m_anio")
-      filtro_mes = st.selectbox("📆 Seleccionar Mes", opciones_mes, key="m_mes")
-
-    # Filtrar datos de producción por año y mes
-    df_filtrado = df_mastellone_prod.copy()
-    if len(df_filtrado) > 0:
-      if filtro_anio != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["Año"] == filtro_anio]
-      if filtro_mes != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["Mes"] == filtro_mes]
-
-    df_consolidado_raw = df_filtrado.copy()
-    if len(df_consolidado_raw) > 0:
-      df_consolidado_raw["PT_Total"] = (
-          df_consolidado_raw["Producto Terminado"]
-          + df_consolidado_raw["PNC"]
-      )
-      df_consolidado_raw["Ratio Consolidado (%)"] = df_consolidado_raw.apply(
-          lambda x: (
-              f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%".replace(
-                  ".", ","
-              )
-              if x["Litros Procesados"] > 0
-              else "0,00%"
-          ),
-          axis=1,
-      )
-
-      df_consolidado = pd.DataFrame()
-      df_consolidado["Fecha"] = df_consolidado_raw["Fecha"]
-      df_consolidado["Lote"] = df_consolidado_raw["Lote"]
-      df_consolidado["Producto"] = df_consolidado_raw["Producto"]
-      df_consolidado["Litros Procesados"] = df_consolidado_raw[
-          "Litros Procesados"
-      ]
-      df_consolidado["Producto Terminado"] = df_consolidado_raw["PT_Total"]
-      df_consolidado["Ratio de Conversión (%)"] = df_consolidado_raw[
-          "Ratio Consolidado (%)"
-      ]
-    else:
-      df_consolidado = pd.DataFrame(
-          columns=[
-              "Fecha",
-              "Lote",
-              "Producto",
-              "Litros Procesados",
-              "Producto Terminado",
-              "Ratio de Conversión (%)",
-          ]
-      )
-
-    # --- OBTENER LITROS INGRESADOS FILTRADOS ESTRICTAMENTE POR AÑO Y MES ---
+    # --- OBTENER LITROS INGRESADOS FILTRADOS ESTRICTAMENTE ---
     total_litros_ingresados = 0.0
     if not df_mast_litros_procesado.empty:
       df_litros_f = df_mast_litros_procesado.copy()
       if filtro_anio != "Todos" and "Año" in df_litros_f.columns:
-        df_litros_f = df_litros_f[df_litros_f["Año"] == filtro_anio]
+        try:
+          df_litros_f = df_litros_f[df_litros_f["Año"] == int(float(filtro_anio))]
+        except ValueError:
+          pass
       if filtro_mes != "Todos" and "Mes" in df_litros_f.columns:
-        df_litros_f = df_litros_f[df_litros_f["Mes"] == filtro_mes]
+        try:
+          df_litros_f = df_litros_f[df_litros_f["Mes"] == int(float(filtro_mes))]
+        except ValueError:
+          pass
       total_litros_ingresados = df_litros_f["Litros"].sum()
 
     total_litros_proc = (
