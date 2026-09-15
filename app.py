@@ -1235,7 +1235,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       df_mast_litros_procesado = pd.DataFrame()
       if not df_mast_litros.empty:
-        # Identificamos la columna de litros y la columna de mes/fecha con total precisión
+        # 1. Identificamos la columna de litros sin importar variaciones del nombre
         cols_lower = [str(c).lower() for c in df_mast_litros.columns]
         
         col_litros = next(
@@ -1246,36 +1246,37 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             ),
             df_mast_litros.columns[-1],
         )
-
-        col_fecha = next(
-            (
-                df_mast_litros.columns[i]
-                for i, c in enumerate(cols_lower)
-                if any(x in c for x in ["fecha", "mes", "periodo", "date"])
-            ),
-            df_mast_litros.columns[0],
-        )
-
         df_mast_litros_procesado["Litros"] = pd.to_numeric(
             df_mast_litros[col_litros], errors="coerce"
         ).fillna(0)
 
-        # Intentamos interpretar la columna de mes/fecha
-        fechas_parsed = pd.to_datetime(
-            df_mast_litros[col_fecha], errors="coerce"
-        )
-        if fechas_parsed.notna().any():
-          df_mast_litros_procesado["Año"] = fechas_parsed.dt.year
-          df_mast_litros_procesado["Mes"] = fechas_parsed.dt.month
+        # 2. NUEVA LÓGICA: Buscar explícitamente columnas de Mes y Año en el Excel
+        if "mes" in cols_lower and ("año" in cols_lower or "anio" in cols_lower):
+            col_mes = df_mast_litros.columns[cols_lower.index("mes")]
+            col_anio = df_mast_litros.columns[cols_lower.index("año") if "año" in cols_lower else cols_lower.index("anio")]
+            
+            df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros[col_mes], errors="coerce").fillna(1).astype(int)
+            df_mast_litros_procesado["Año"] = pd.to_numeric(df_mast_litros[col_anio], errors="coerce").fillna(2026).astype(int)
+        
+        # 3. Fallback: Si no existen las columnas por separado, intentar deducir la fecha
         else:
-          # Si son números de mes (1 al 12) o nombres de meses por fila
-          df_mast_litros_procesado["Mes"] = pd.to_numeric(
-              df_mast_litros[col_fecha], errors="coerce"
-          )
-          # Si no hay mes numérico, asumimos orden de filas (Fila 0 = Enero, ..., Fila 7 = Agosto)
-          if df_mast_litros_procesado["Mes"].isna().all():
-            df_mast_litros_procesado["Mes"] = range(1, len(df_mast_litros_procesado) + 1)
-          df_mast_litros_procesado["Año"] = 2026
+            col_fecha = next(
+                (
+                    df_mast_litros.columns[i]
+                    for i, c in enumerate(cols_lower)
+                    if any(x in c for x in ["fecha", "periodo", "date"])
+                ),
+                df_mast_litros.columns[0],
+            )
+            
+            # Filtramos para evitar que convierta los números simples a 1970
+            fechas_parsed = pd.to_datetime(df_mast_litros[col_fecha], errors="coerce", dayfirst=True)
+            if fechas_parsed.notna().any() and fechas_parsed.dt.year.max() > 1970:
+                df_mast_litros_procesado["Año"] = fechas_parsed.dt.year
+                df_mast_litros_procesado["Mes"] = fechas_parsed.dt.month
+            else:
+                df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros[col_fecha], errors="coerce").fillna(1).astype(int)
+                df_mast_litros_procesado["Año"] = 2026
 
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.markdown("### 🔍 Filtros Mastellone")
