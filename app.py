@@ -36,12 +36,18 @@ FILE_ID_REMITOS = "16Uh0EwP8tyW79TfJlvcjE8li5Lc6RSLj"
 FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 
+# ID de Google Drive para Mastellone (Módulo 2 - Reemplazá con tu ID real de Datos MHSA.xlsx)
+FILE_ID_MASTELLONE = "TU_FILE_ID_DATOS_MHSA_AQUI"
+
 URL_REMITOS = (
     f"https://drive.google.com/uc?export=download&id={FILE_ID_REMITOS}"
 )
 URL_LAB = f"https://drive.google.com/uc?export=download&id={FILE_ID_LAB}"
 URL_BACSOMATIC = (
     f"https://drive.google.com/uc?export=download&id={FILE_ID_BACSOMATIC}"
+)
+URL_MASTELLONE = (
+    f"https://drive.google.com/uc?export=download&id={FILE_ID_MASTELLONE}"
 )
 
 MESES_ES = {
@@ -122,6 +128,20 @@ def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
     st.sidebar.warning(f"No se pudo cargar el archivo Bacsomatic: {e}")
 
   return df_remitos_raw, df_contactos, df_lab, df_bacsomatic
+
+
+@st.cache_data(ttl=60, show_spinner="Descargando datos de Mastellone...")
+def cargar_datos_mastellone(url_mastellone):
+  try:
+    # Lee directamente la solapa renombrada 'litros mes'
+    df_mast = pd.read_excel(url_mastellone, sheet_name="litros mes")
+    df_mast.columns = df_mast.columns.astype(str).str.strip()
+    return df_mast
+  except Exception as e:
+    st.sidebar.warning(
+        f"No se pudo cargar la solapa 'litros mes' de Mastellone: {e}"
+    )
+    return pd.DataFrame()
 
 
 def formato_miles(valor) -> str:
@@ -490,7 +510,7 @@ with st.sidebar:
 
 
 # =========================================================================
-# MÓDULO 1: RECEPCIÓN Y CALIDAD COOPAGRO (Tu app original totalmente integrada)
+# MÓDULO 1: RECEPCIÓN Y CALIDAD COOPAGRO
 # =========================================================================
 if modulo_principal == "🥛 Recepción y Calidad Coopagro":
   try:
@@ -1083,7 +1103,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                   nom_arch,
                   "mensual" if es_mensual else "semanal",
               ):
-                st.success(f"Correo enviado a {email_t}")
+                st.success(f"Correo enviado al productor.")
           else:
             st.warning("Tambo sin email configurado.")
 
@@ -1144,18 +1164,32 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
 
 # =========================================================================
-# MÓDULOS 2, 3 y 4 (Estructura base lista para sumar los demás excels)
+# MÓDULO 2: RECEPCIÓN MASTELLONE (FASÓN) - IMPLEMENTADO
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.markdown(
-      '<p class="main-header">Recepción de Cisternas — Fasón Mastellone</p>',
+      '<p class="main-header">Recepción de Materia Prima — Fasón Mastellone</p>',
       unsafe_allow_html=True,
   )
-  st.info(
-      "Módulo listo para conectar el archivo `Datos MHSA.xlsx` con los"
-      " parámetros de cisterna."
-  )
+  st.markdown("Control de recepción y volúmenes mensuales de leche (Fasón).")
 
+  df_mastellone = cargar_datos_mastellone(URL_MASTELLONE)
+
+  if not df_mastellone.empty:
+    st.success("Datos de Mastellone cargados correctamente desde la solapa 'litros mes'.")
+
+    # Mostramos métricas o la tabla limpia de litros mensuales
+    st.dataframe(df_mastellone, use_container_width=True, hide_index=True)
+  else:
+    st.info(
+        "Configurá el FILE_ID de 'Datos MHSA.xlsx' en la variable"
+        " `FILE_ID_MASTELLONE` para visualizar los datos de Mastellone."
+    )
+
+
+# =========================================================================
+# MÓDULOS 3 y 4
+# =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.markdown(
       '<p class="main-header">Registro de Producción y Ecuación de Van'
