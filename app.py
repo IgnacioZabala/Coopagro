@@ -31,7 +31,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- IDs de Google Drive (Fijos y Configurados) ---
+# --- IDs de Google Drive (Fijos y Configurados - Módulo 1 Blindado e Intacto) ---
 FILE_ID_REMITOS = "16Uh0EwP8tyW79TfJlvcjE8li5Lc6RSLj"
 FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
@@ -134,7 +134,6 @@ def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
 def cargar_datos_mastellone(url_mastellone):
   try:
     xls = pd.ExcelFile(url_mastellone)
-    # Buscamos de forma exacta o flexible la solapa 'litros mes'
     sheet_name = next(
         (s for s in xls.sheet_names if "litros" in s.lower() or "mes" in s.lower()),
         xls.sheet_names[0],
@@ -443,14 +442,14 @@ def generar_pdf_bytes(
     headers.append(("Prot", 20))
     mapeo.append(
         lambda r: f"{getattr(r, 'Proteina'):.2f}%".replace(".", ",")
-        if pd.notna(getattr(r, "Proteina", pd.NA))
+        if pd.notna(getattr(r, 'Proteina', pd.NA))
         else "-"
     )
   if args_visibles["crios"]:
     headers.append(("Crios", 22))
     mapeo.append(
         lambda r: f"{getattr(r, 'Crioscopia'):.3f}".replace(".", ",")
-        if pd.notna(getattr(r, "Crioscopia", pd.NA))
+        if pd.notna(getattr(r, 'Crioscopia', pd.NA))
         else "-"
     )
   if args_visibles["ufc"]:
@@ -519,7 +518,7 @@ def enviar_correo_productor(
 # --- MENÚ DE NAVEGACIÓN PRINCIPAL DE LA SUPER APP ---
 with st.sidebar:
   if os.path.exists("logo.png"):
-    st.image("logo.png", width=400)  # Logo más grande y proporcional
+    st.image("logo.png", width=400)
   st.markdown("---")
 
   modulo_principal = st.radio(
@@ -534,7 +533,7 @@ with st.sidebar:
 
 
 # =========================================================================
-# MÓDULO 1: RECEPCIÓN Y CALIDAD COOPAGRO (Blindado e Intacto)
+# MÓDULO 1: RECEPCIÓN Y CALIDAD COOPAGRO (100% Blindado e Intacto)
 # =========================================================================
 if modulo_principal == "🥛 Recepción y Calidad Coopagro":
   try:
@@ -1192,13 +1191,13 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.markdown(
-      '<p class="main-header">🏭 Reporte de Producción y Recepción — Fasón Mastellone</p>',
+      '<p class="main-header">🏭 Reporte de Producción y Recepción — Fasón'
+      " Mastellone</p>",
       unsafe_allow_html=True,
   )
 
   try:
     with st.spinner("Sincronizando datos de Mastellone desde Google Drive..."):
-      # 1. Leer Producción General para aislar Mastellone (código 840)[cite: 3]
       raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
@@ -1229,7 +1228,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # 2. Leer Litros Mes desde Datos MHSA.xlsx (Solapa 'litros mes')
       df_mast_litros = cargar_datos_mastellone(URL_MASTELLONE)
 
       df_mast_litros_procesado = pd.DataFrame()
@@ -1248,7 +1246,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_mast_litros[col_litros], errors="coerce"
         ).fillna(0)
 
-        # Búsqueda robusta de Mes y Año
         idx_mes = next((i for i, c in enumerate(cols_lower) if "mes" in c), None)
         idx_anio = next((i for i, c in enumerate(cols_lower) if "año" in c or "anio" in c), None)
 
@@ -1274,7 +1271,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros[col_fecha], errors="coerce").fillna(1).astype(int)
                 df_mast_litros_procesado["Año"] = 2026
 
-    # --- ÚNICA BARRA LATERAL DE FILTROS PARA MASTELLONE ---
     st.sidebar.markdown("### 🔍 Filtros Mastellone")
     opciones_anio = ["Todos"] + (
         sorted(df_mastellone_prod["Año"].unique().tolist())
@@ -1287,7 +1283,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       filtro_anio = st.selectbox("📅 Seleccionar Año", opciones_anio, key="m_anio_mastellone")
       filtro_mes = st.selectbox("📆 Seleccionar Mes", opciones_mes, key="m_mes_mastellone")
 
-    # Filtrar datos de producción por año y mes
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
       if filtro_anio != "Todos":
@@ -1335,7 +1330,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           ]
       )
 
-    # --- OBTENER LITROS INGRESADOS FILTRADOS ESTRICTAMENTE ---
     total_litros_ingresados = 0.0
     if not df_mast_litros_procesado.empty:
       df_litros_f = df_mast_litros_procesado.copy()
@@ -1373,7 +1367,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
         else 0
     )
 
-    # --- INTERFAZ PRINCIPAL DE MASTELLONE ---
     st.markdown("### 📈 Indicadores Consolidados - Mastellone")
     g1, g2, g3 = st.columns(3)
     g1.metric("Litros Ingresados", formato_miles(total_litros_ingresados))
@@ -1414,15 +1407,216 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
 
 # =========================================================================
-# MÓDULOS 3 y 4
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO (COOPAGRO)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.markdown(
-      '<p class="main-header">Registro de Producción y Ecuación de Van Slyke</p>',
+      '<h1 class="main-header">🏭 Reporte de Producción y Recepción — Coopagro</h1>',
       unsafe_allow_html=True,
   )
-  st.info("Módulo en desarrollo para análisis global de rendimiento.")
 
+  try:
+    with st.spinner("Sincronizando datos de producción y recepción desde Google Drive..."):
+      raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
+      df_prod = pd.DataFrame()
+      df_prod['Fecha'] = raw_prod.iloc[:, 0]
+      df_prod['Lote'] = raw_prod.iloc[:, 1]
+      df_prod['Litros Procesados'] = raw_prod.iloc[:, 3]
+      df_prod['Producto Terminado'] = raw_prod.iloc[:, 5]
+      df_prod['PNC'] = raw_prod.iloc[:, 6]
+      
+      df_prod = df_prod.dropna(subset=['Fecha'])
+      df_prod['Fecha'] = pd.to_datetime(df_prod['Fecha'], dayfirst=True, errors='coerce')
+      df_prod = df_prod.dropna(subset=['Fecha'])
+
+      for col in ["Litros Procesados", "Producto Terminado", "PNC"]:
+          df_prod[col] = pd.to_numeric(df_prod[col], errors='coerce').fillna(0)
+
+      if len(df_prod) > 0:
+          df_prod['Producto'], df_prod['Grupo'] = zip(*df_prod['Lote'].astype(str).apply(procesar_lote_mastellone))
+      else:
+          df_prod['Producto'] = []
+          df_prod['Grupo'] = []
+
+      df_prod['Año'] = df_prod['Fecha'].dt.year
+      df_prod['Mes'] = df_prod['Fecha'].dt.month
+
+      df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
+
+      raw_recibo = pd.read_excel(URL_RECIBO)
+      df_recibo = pd.DataFrame()
+      df_recibo['Fecha_Raw'] = raw_recibo.iloc[:, 1] 
+      df_recibo['Litros Ingresados'] = pd.to_numeric(raw_recibo.iloc[:, 5], errors='coerce').fillna(0)
+      
+      df_recibo['Fecha'] = pd.to_datetime(df_recibo['Fecha_Raw'], dayfirst=True, errors='coerce')
+      df_recibo = df_recibo.dropna(subset=['Fecha'])
+      
+      df_recibo['Año'] = df_recibo['Fecha'].dt.year
+      df_recibo['Mes'] = df_recibo['Fecha'].dt.month
+
+      recibo_mensual = df_recibo.groupby(['Año', 'Mes'])['Litros Ingresados'].sum().reset_index()
+
+    st.sidebar.markdown("### 🔍 Filtros Producción Coopagro")
+    
+    opciones_anio = ["Todos"] + (sorted(df_prod_coop['Año'].unique().tolist()) if len(df_prod_coop) > 0 else [2026])
+    opciones_mes = ["Todos"] + list(range(1, 13))
+
+    with st.sidebar.container():
+        filtro_anio_coop = st.selectbox("📅 Seleccionar Año", opciones_anio, key="coop_prod_anio")
+        filtro_mes_coop = st.selectbox("📆 Seleccionar Mes", opciones_mes, key="coop_prod_mes")
+
+    df_filtrado = df_prod_coop.copy()
+    if len(df_filtrado) > 0:
+        if filtro_anio_coop != "Todos": df_filtrado = df_filtrado[df_filtrado['Año'] == filtro_anio_coop]
+        if filtro_mes_coop != "Todos": df_filtrado = df_filtrado[df_filtrado['Mes'] == filtro_mes_coop]
+
+    df_consolidado = pd.DataFrame()
+    if len(df_filtrado) > 0:
+        df_consolidado_raw = df_filtrado.copy()
+            
+        df_consolidado_raw['PT_Total'] = df_consolidado_raw['Producto Terminado'] + df_consolidado_raw['PNC']
+        df_consolidado_raw['Ratio Consolidado (%)'] = df_consolidado_raw.apply(
+            lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%".replace(".", ",") if x['Litros Procesados'] > 0 else "0,00%", axis=1
+        )
+        
+        df_consolidado['Fecha'] = df_consolidado_raw['Fecha']
+        df_consolidado['Lote'] = df_consolidado_raw['Lote']
+        df_consolidado['Producto'] = df_consolidado_raw['Producto']
+        df_consolidado['Litros Procesados'] = df_consolidado_raw['Litros Procesados']
+        df_consolidado['Producto Terminado'] = df_consolidado_raw['PT_Total']
+        df_consolidado['Ratio de Conversión (%)'] = df_consolidado_raw['Ratio Consolidado (%)']
+    else:
+        df_consolidado = pd.DataFrame(columns=['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'Ratio de Conversión (%)'])
+
+    df_recibo_filtrado = recibo_mensual.copy()
+    if filtro_anio_coop != "Todos": df_recibo_filtrado = df_recibo_filtrado[df_recibo_filtrado['Año'] == filtro_anio_coop]
+    if filtro_mes_coop != "Todos": df_recibo_filtrado = df_recibo_filtrado[df_recibo_filtrado['Mes'] == filtro_mes_coop]
+    
+    total_litros_ingresados = df_recibo_filtrado['Litros Ingresados'].sum()
+
+    total_litros_proc = df_filtrado['Litros Procesados'].sum() if len(df_filtrado) > 0 else 0
+    total_prod_consolidado = df_consolidado['Producto Terminado'].sum() if len(df_consolidado) > 0 else 0
+    
+    ratio_ponderado = (total_prod_consolidado / total_litros_proc * 100) if total_litros_proc > 0 else 0
+    rendimiento_ingreso = (total_prod_consolidado / total_litros_ingresados * 100) if total_litros_ingresados > 0 else 0
+
+    meses_nombres = {
+        1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 
+        7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+    }
+    mes_str = meses_nombres.get(filtro_mes_coop, "") if filtro_mes_coop != "Todos" else ""
+    anio_str = str(filtro_anio_coop) if filtro_anio_coop != "Todos" else "2026"
+
+    titulo_pdf = f"Reporte de producción Coopagro {mes_str} {anio_str}".strip()
+
+    st.markdown("### 📈 Indicadores Consolidados — Coopagro")
+    g1, g2, g3 = st.columns(3)
+    g1.metric("Litros Ingresados", formato_miles(total_litros_ingresados))
+    g2.metric("Litros Procesados", formato_miles(total_litros_proc))
+    g3.metric("Total Producto Terminado", formato_miles(total_prod_consolidado))
+    
+    g4, g5, _ = st.columns(3)
+    g4.metric("Ratio PT / Litros procesados", f"{ratio_ponderado:.2f}%".replace(".", ","))
+    g5.metric("Ratio PT / Litros ingresados", f"{rendimiento_ingreso:.2f}%".replace(".", ","))
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("### 📋 Registro de Lotes (Coopagro)")
+    if len(df_consolidado) > 0:
+        df_gerencia_display = df_consolidado.copy()
+        df_gerencia_display['Litros Procesados'] = df_gerencia_display['Litros Procesados'].apply(formato_miles)
+        df_gerencia_display['Producto Terminado'] = df_gerencia_display['Producto Terminado'].apply(formato_miles)
+        df_gerencia_display['Fecha'] = df_gerencia_display['Fecha'].dt.strftime('%d/%m/%Y')
+        st.dataframe(df_gerencia_display, use_container_width=True, hide_index=True, height=350)
+    else:
+        st.info("No hay lotes consolidados de Coopagro en el período.")
+
+    def generar_pdf_coopagro(dataframe_gerencia, titulo_dinamico, lit_ingresados, rend_gerencia, ratio_pond_gerenc, df_prod_raw_gerencia):
+        pdf = FPDF(orientation='P', unit='mm', format='A4')
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 13)
+        pdf.cell(190, 7, txt=titulo_dinamico, ln=True, align='C')
+        pdf.ln(3)
+        
+        pdf.set_font("Arial", 'B', 10)
+        pdf.cell(190, 5, txt="Resumen", ln=True, align='L')
+        pdf.set_font("Arial", '', 9)
+        
+        tot_lit = dataframe_gerencia['Litros Procesados'].sum()
+        tot_pro_ger = dataframe_gerencia['Producto Terminado'].sum()
+        
+        pdf.cell(95, 5, txt=f"Total Litros Ingresados: {formato_miles(lit_ingresados)}", ln=0)
+        pdf.cell(95, 5, txt=f"Ratio PT / Litros procesados: {ratio_pond_gerenc:.2f}%".replace(".", ","), ln=1)
+        pdf.cell(95, 5, txt=f"Total Litros Procesados: {formato_miles(tot_lit)}", ln=0)
+        pdf.cell(95, 5, txt=f"Ratio PT / Litros ingresados: {rend_gerencia:.2f}%".replace(".", ","), ln=1)
+        pdf.cell(95, 5, txt=f"Total Producto Terminado: {formato_miles(tot_pro_ger)}", ln=1)
+        pdf.ln(5)
+
+        pdf.set_font("Arial", 'B', 10)
+        pdf.cell(190, 5, txt="Cantidad por Producto:", ln=True, align='L')
+        pdf.set_font("Arial", '', 8)
+        
+        prod_res_ger = df_prod_raw_gerencia.groupby('Producto')[['Litros Procesados', 'PT_Total']].sum().reset_index()
+        for idx, row in prod_res_ger.iterrows():
+            ratio_prod = (row['PT_Total'] / row['Litros Procesados'] * 100) if row['Litros Procesados'] > 0 else 0
+            ratio_prod_str = f"{ratio_prod:.2f}%".replace(".", ",")
+            txt_linea = f"- {row['Producto']}: Litros Proc. {formato_miles(row['Litros Procesados'])} | Prod. Terminado: {formato_miles(row['PT_Total'])} | Ratio: {ratio_prod_str}"
+            pdf.cell(190, 4.5, txt=txt_linea, ln=True)
+            
+        pdf.ln(5)
+        
+        pdf.set_font("Arial", 'B', 10)
+        pdf.cell(190, 5, txt="Detalle de Lotes", ln=True, align='L')
+        pdf.ln(2)
+        
+        pdf.set_font("Arial", 'B', 7)
+        anchos = [20, 28, 42, 32, 38, 30]
+        columnas = dataframe_gerencia.columns.tolist()
+        for i in range(len(columnas)):
+            pdf.cell(anchos[i], 7, columnas[i], border=1, align='C')
+        pdf.ln()
+        
+        pdf.set_font("Arial", '', 7)
+        for index, row in dataframe_gerencia.iterrows():
+            pdf.cell(anchos[0], 6, row['Fecha'].strftime('%d/%m/%Y'), border=1, align='C')
+            pdf.cell(anchos[1], 6, str(row['Lote']), border=1, align='C')
+            pdf.cell(anchos[2], 6, str(row['Producto']), border=1, align='L')
+            pdf.cell(anchos[3], 6, formato_miles(row['Litros Procesados']), border=1, align='R')
+            pdf.cell(anchos[4], 6, formato_miles(row['Producto Terminado']), border=1, align='R')
+            pdf.cell(anchos[5], 6, row['Ratio de Conversión (%)'], border=1, align='C')
+            pdf.ln()
+            
+        pdf_output = pdf.output(dest='S')
+        return pdf_output.encode('latin1') if isinstance(pdf_output, str) else pdf_output
+
+    st.markdown("---")
+    st.markdown("### 📥 Exportar Reporte Coopagro")
+    
+    if len(df_consolidado) > 0:
+        df_gerencia_raw_pdf = df_prod_coop.copy()
+        if filtro_anio_coop != "Todos": df_gerencia_raw_pdf = df_gerencia_raw_pdf[df_gerencia_raw_pdf['Año'] == filtro_anio_coop]
+        if filtro_mes_coop != "Todos": df_gerencia_raw_pdf = df_gerencia_raw_pdf[df_gerencia_raw_pdf['Mes'] == filtro_mes_coop]
+        df_gerencia_raw_pdf['PT_Total'] = df_gerencia_raw_pdf['Producto Terminado'] + df_gerencia_raw_pdf['PNC']
+
+        pdf_bytes = generar_pdf_coopagro(df_consolidado, titulo_pdf, total_litros_ingresados, rendimiento_ingreso, ratio_ponderado, df_gerencia_raw_pdf)
+        
+        st.download_button(
+            label="📄 Descargar Reporte en PDF",
+            data=pdf_bytes,
+            file_name=f"{titulo_pdf.replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+    else:
+        st.warning("⚠️ No hay datos de Coopagro para los filtros seleccionados.")
+            
+  except Exception as e:
+    st.error(f"Error al procesar el módulo de Producción Coopagro: {e}")
+    st.code(traceback.format_exc())
+
+
+# =========================================================================
+# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS
+# =========================================================================
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
   st.markdown(
       '<p class="main-header">Gestión de Insumos y Costos Variables</p>',
