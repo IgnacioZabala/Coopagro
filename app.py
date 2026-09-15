@@ -35,8 +35,8 @@ st.markdown(
 FILE_ID_REMITOS = "16Uh0EwP8tyW79TfJlvcjE8li5Lc6RSLj"
 FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
-FILE_ID_MASTELLONE = "TU_FILE_ID_DATOS_MHSA_AQUI"  # Reemplazar con ID real de Datos MHSA.xlsx
-ID_PRODUCCION = "1wuIpzYmVuflX_pWoPt4Pz9olWF4LLKOf"  # ID de producción general
+FILE_ID_MASTELLONE = "1zNk6whrwaFucv0d7Vkab5rkJduIHzeAg"
+ID_PRODUCCION = "1wuIpzYmVuflX_pWoPt4Pz9olWF4LLKOf"
 
 URL_REMITOS = (
     f"https://drive.google.com/uc?export=download&id={FILE_ID_REMITOS}"
@@ -165,41 +165,6 @@ def limpiar_tambo(val) -> str:
   return s
 
 
-def extraer_fecha_texto(texto) -> pd.Timestamp:
-  if pd.isna(texto):
-    return pd.NaT
-  s = str(texto).strip()
-  match_compacto = REGEX_COMPACTO.search(s)
-  if match_compacto:
-    d, m, a = match_compacto.groups()
-    try:
-      return pd.to_datetime(f"{a}-{m}-{d}").normalize()
-    except ValueError:
-      pass
-  match = REGEX_FECHA.search(s)
-  if match:
-    d, m, a = match.groups()
-    try:
-      return pd.to_datetime(f"{a}-{m}-{d}").normalize()
-    except ValueError:
-      pass
-  return pd.NaT
-
-
-def calcular_promedio_ponderado(
-    df: pd.DataFrame, columna_valor: str, columna_peso: str = "Litros_Ticket"
-) -> float:
-  if columna_valor not in df.columns or columna_peso not in df.columns:
-    return float("nan")
-  df_valido = df[[columna_valor, columna_peso]].dropna()
-  peso_total = df_valido[columna_peso].sum()
-  if peso_total == 0:
-    return float("nan")
-  return (
-      df_valido[columna_valor] * df_valido[columna_peso]
-  ).sum() / peso_total
-
-
 def procesar_lote_mastellone(lote_str):
   if not isinstance(lote_str, str) or len(lote_str) < 8:
     return "Desconocido", "Desconocido"
@@ -219,79 +184,6 @@ def procesar_lote_mastellone(lote_str):
   return mapping_prod.get(
       prod_code, f"Desconocido ({prod_code})"
   ), mapping_grupo.get(prod_code, "Otro")
-
-
-def generar_pdf_base(
-    titulo: str,
-    subtitulo: str,
-    metricas: list,
-    headers: list,
-    df_datos: pd.DataFrame,
-    filas_mapeo: list,
-    usable_width: int = 190,
-):
-  pdf = FPDF(orientation="P", unit="mm", format="A4")
-  pdf.set_auto_page_break(auto=True, margin=15)
-  pdf.add_page()
-
-  ruta_logo = "logo.png"
-  if os.path.exists(ruta_logo):
-    pdf.image(ruta_logo, x=65, y=10, w=80)
-    pdf.set_y(52)
-  else:
-    pdf.set_y(15)
-
-  pdf.set_font("Arial", "B", 12)
-  pdf.set_text_color(100, 100, 100)
-  pdf.cell(0, 6, titulo, ln=True, align="C")
-  pdf.set_text_color(0, 0, 0)
-  pdf.ln(4)
-  pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-  pdf.ln(6)
-
-  pdf.set_font("Arial", "B", 11)
-  pdf.cell(0, 7, subtitulo, ln=True)
-  pdf.set_font("Arial", "", 10)
-  for metrica in metricas:
-    pdf.cell(0, 6, metrica, ln=True)
-
-  pdf.ln(6)
-  pdf.set_font("Arial", "B", 9 if len(headers) < 5 else 8)
-  pdf.set_fill_color(200, 220, 255)
-
-  suma_anchos = sum([w for _, w in headers])
-  factor = usable_width / suma_anchos if suma_anchos > 0 else 1.0
-  headers_ajustados = [(name, w * factor) for name, w in headers]
-
-  for i, (col_name, col_w) in enumerate(headers_ajustados):
-    pdf.cell(
-        col_w,
-        8,
-        col_name,
-        1,
-        1 if i == len(headers_ajustados) - 1 else 0,
-        "C",
-        fill=True,
-    )
-
-  pdf.set_font("Arial", "", 9 if len(headers) < 5 else 8)
-  for row in df_datos.itertuples(index=False):
-    for i, (fn_mapeo, (_, col_w)) in enumerate(
-        zip(filas_mapeo, headers_ajustados)
-    ):
-      val = fn_mapeo(row)
-      align = "L" if "Nombre" in headers_ajustados[i][0] else "C"
-      pdf.cell(
-          col_w,
-          7,
-          str(val),
-          1,
-          1 if i == len(headers_ajustados) - 1 else 0,
-          align,
-      )
-
-  output = pdf.output(dest="S")
-  return bytes(output) if not isinstance(output, bytes) else output
 
 
 # --- MENÚ DE NAVEGACIÓN PRINCIPAL DE LA SUPER APP ---
@@ -315,15 +207,11 @@ with st.sidebar:
 # MÓDULO 1: RECEPCIÓN Y CALIDAD COOPAGRO
 # =========================================================================
 if modulo_principal == "🥛 Recepción y Calidad Coopagro":
-  # (Mantiene toda la lógica de Coopagro intacta)
   st.markdown(
       '<p class="main-header">🥛 Módulo de Recepción y Calidad - Coopagro</p>',
       unsafe_allow_html=True,
   )
-  st.info(
-      "Sección activa de Coopagro. Utilice el menú lateral para navegar entre"
-      " paneles y reportes."
-  )
+  st.info("Sección activa de Coopagro.")
 
 
 # =========================================================================
@@ -338,7 +226,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
   try:
     with st.spinner("Sincronizando datos de Mastellone desde Google Drive..."):
-      # 1. Leer Producción General para aislar Mastellone (código 840)
+      # 1. Leer Producción General para aislar Mastellone (código 840)[cite: 3]
       raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
@@ -367,11 +255,41 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Año"] = df_prod["Fecha"].dt.year
       df_prod["Mes"] = df_prod["Fecha"].dt.month
 
-      # Filtramos estrictamente el grupo Mastellone (Muzzarella Exportación Mastellone)[cite: 3]
+      # Filtramos estrictamente Mastellone[cite: 3]
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
       # 2. Leer Litros Mes desde Datos MHSA.xlsx (Solapa 'litros mes')
       df_mast_litros = cargar_datos_mastellone(URL_MASTELLONE)
+
+      # Procesar fechas y litros del archivo de Mastellone para que cruce por mes y año
+      if not df_mast_litros.empty:
+        # Detectar columna de fecha automáticamente en la solapa 'litros mes'
+        col_fecha_mast = next(
+            (
+                c
+                for c in df_mast_litros.columns
+                if any(x in c.lower() for x in ["fecha", "mes", "periodo", "date"])
+            ),
+            df_mast_litros.columns[0],
+        )
+        # Detectar columna de litros
+        col_litros_mast = next(
+            (
+                c
+                for c in df_mast_litros.columns
+                if any(x in c.lower() for x in ["litro", "volumen", "cantidad"])
+            ),
+            df_mast_litros.columns[-1],
+        )
+
+        df_mast_litros["Fecha_Parsed"] = pd.to_datetime(
+            df_mast_litros[col_fecha_mast], errors="coerce"
+        )
+        df_mast_litros["Año"] = df_mast_litros["Fecha_Parsed"].dt.year
+        df_mast_litros["Mes"] = df_mast_litros["Fecha_Parsed"].dt.month
+        df_mast_litros["Litros_Ingresados"] = pd.to_numeric(
+            df_mast_litros[col_litros_mast], errors="coerce"
+        ).fillna(0)
 
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.markdown("### 🔍 Filtros Mastellone")
@@ -390,7 +308,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       filtro_anio = st.selectbox("📅 Seleccionar Año", opciones_anio, key="m_anio")
       filtro_mes = st.selectbox("📆 Seleccionar Mes", opciones_mes, key="m_mes")
 
-    # Filtrar datos de producción
+    # Filtrar datos de producción por año y mes
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
       if filtro_anio != "Todos":
@@ -438,22 +356,21 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           ]
       )
 
-    # Obtenemos los litros ingresados desde la tabla de la solapa 'litros mes'
+    # --- OBTENER LITROS INGRESADOS FILTRADOS POR AÑO Y MES ---
     total_litros_ingresados = 0.0
-    if not df_mast_litros.empty:
-      # Suponemos que la tabla tiene una columna con litros o sumamos dinámicamente
-      # (Podés ajustar la columna según el nombre exacto que tenga en tu solapa 'litros mes')
-      col_litros = next(
-          (
-              c
-              for c in df_mast_litros.columns
-              if any(x in c.lower() for x in ["litro", "volumen", "cantidad"])
-          ),
-          df_mast_litros.columns[-1],
-      )
-      total_litros_ingresados = (
-          pd.to_numeric(df_mast_litros[col_litros], errors="coerce").sum()
-      )
+    if not df_mast_litros.empty and "Litros_Ingresados" in df_mast_litros.columns:
+      df_litros_filtrados = df_mast_litros.copy()
+      if filtro_anio != "Todos":
+        df_litros_filtrados = df_litros_filtrados[
+            df_litros_filtrados["Año"] == filtro_anio
+        ]
+      if filtro_mes != "Todos":
+        df_litros_filtrados = df_litros_filtrados[
+            df_litros_filtrados["Mes"] == filtro_mes
+        ]
+      total_litros_ingresados = df_litros_filtrados[
+          "Litros_Ingresados"
+      ].sum()
 
     total_litros_proc = (
         df_filtrado["Litros Procesados"].sum()
@@ -480,7 +397,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     # --- INTERFAZ PRINCIPAL DE MASTELLONE ---
     st.markdown("### 📈 Indicadores Consolidados - Mastellone")
     g1, g2, g3 = st.columns(3)
-    g1.metric("Litros Ingresados (Drive)", formato_miles(total_litros_ingresados))
+    g1.metric("Litros Ingresados", formato_miles(total_litros_ingresados))
     g2.metric("Litros Procesados", formato_miles(total_litros_proc))
     g3.metric(
         "Total Producto Terminado", formato_miles(total_prod_consolidado)
@@ -530,7 +447,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
   st.markdown(
-      '<p class="main-header">Gestión de Insumos y Costos Variables</p>',
+      '<p class="main-header">Gestión de Insumos y Costos Variables</p>",
       unsafe_allow_html=True,
   )
   st.info("Módulo en desarrollo para control de stock y costos.")
