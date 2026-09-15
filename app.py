@@ -247,8 +247,8 @@ def generar_pdf_base(
           align,
       )
 
-output = pdf.output(dest="S")
-return bytes(output) if not isinstance(output, bytes) else output
+  output = pdf.output(dest="S")
+  return bytes(output) if not isinstance(output, bytes) else output
 
 
 def generar_pdf_panel_general(
@@ -399,14 +399,14 @@ def generar_pdf_bytes(
     headers.append(("Prot", 20))
     mapeo.append(
         lambda r: f"{getattr(r, 'Proteina'):.2f}%".replace(".", ",")
-        if pd.notna(getattr(r, 'Proteina', pd.NA))
+        if pd.notna(getattr(r, "Proteina", pd.NA))
         else "-"
     )
   if args_visibles["crios"]:
     headers.append(("Crios", 22))
     mapeo.append(
         lambda r: f"{getattr(r, 'Crioscopia'):.3f}".replace(".", ",")
-        if pd.notna(getattr(r, 'Crioscopia', pd.NA))
+        if pd.notna(getattr(r, "Crioscopia", pd.NA))
         else "-"
     )
   if args_visibles["ufc"]:
