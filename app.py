@@ -247,7 +247,8 @@ def generar_pdf_base(
           align,
       )
 
-  return bytes(pdf.output(dest="S"), encoding="latin-1")
+  output = pdf.output(dest="S")
+return bytes(output) if not isinstance(output, bytes) else output
 
 
 def generar_pdf_panel_general(
