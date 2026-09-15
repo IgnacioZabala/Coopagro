@@ -11,7 +11,7 @@ from fpdf import FPDF
 import pandas as pd
 import streamlit as st
 
-# 1. Configuración general de la Super App
+# 1. Configuración general de la Super App & Diseño UI/UX Moderno
 st.set_page_config(
     page_title="Sistema Integral de Planta | Coopagro & Fasón",
     page_icon="🏭",
@@ -22,16 +22,79 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        .main { background-color: #f8f9fa; }
-        .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #e3e6f0; }
-        .stButton button { border-radius: 6px; font-weight: 600; }
-        .main-header { font-size: 26px; font-weight: 800; color: #1f2937; }
+        /* Estilos generales y fondo limpio corporativo */
+        .stApp { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
+        
+        /* Tarjetas de métricas profesionales tipo Dashboard moderno */
+        div[data-testid="metric-container"] {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #e2e8f0;
+            padding: 18px 22px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            transition: all 0.3s ease-in-out;
+        }
+        div[data-testid="metric-container"]:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+            border-color: #cbd5e1;
+        }
+        div[data-testid="metric-container"] label {
+            color: #64748b !important;
+            font-weight: 600 !important;
+            font-size: 0.85rem !important;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        div[data-testid="metric-container"] [data-testid="stMetricValue"] {
+            color: #0f172a !important;
+            font-weight: 700 !important;
+            font-size: 1.8rem !important;
+        }
+
+        /* Encabezados principales elegantes */
+        .main-header {
+            color: #0f172a;
+            font-weight: 800;
+            font-size: 1.85rem;
+            padding-bottom: 12px;
+            border-bottom: 3px solid #3b82f6;
+            margin-bottom: 25px;
+            letter-spacing: -0.02em;
+        }
+
+        /* Tablas y DataFrames estilizados */
+        thead tr th {
+            background-color: #1e293b !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            text-align: center !important;
+            padding: 10px !important;
+        }
+        
+        /* Botones de acción */
+        .stButton button {
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        /* Sidebar moderno */
+        section[data-testid="stSidebar"] {
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        section[data-testid="stSidebar"] .stRadio label, 
+        section[data-testid="stSidebar"] .stSelectbox label,
+        section[data-testid="stSidebar"] h3 {
+            color: #f8fafc !important;
+        }
     </style>
 """,
     unsafe_allow_html=True,
 )
 
-# --- IDs de Google Drive (Fijos y Configurados - Módulos 1 y 2 Blindados e Intactos) ---
+# --- IDs de Google Drive (Fijos y Configurados - Módulos 1, 2 y 3 Blindados e Intactos) ---
 FILE_ID_REMITOS = "16Uh0EwP8tyW79TfJlvcjE8li5Lc6RSLj"
 FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
@@ -77,7 +140,7 @@ def encontrar_fila_encabezado(df_temp: pd.DataFrame, palabras_clave: list) -> in
   return 0
 
 
-@st.cache_data(ttl=60, show_spinner="Descargando datos de Coopagro...")
+@st.cache_data(ttl=60, show_spinner="Sincronizando datos de Coopagro...")
 def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
   df_remitos_raw, df_contactos, df_lab, df_bacsomatic = (
       pd.DataFrame(),
@@ -130,7 +193,7 @@ def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
   return df_remitos_raw, df_contactos, df_lab, df_bacsomatic
 
 
-@st.cache_data(ttl=60, show_spinner="Descargando datos de Mastellone...")
+@st.cache_data(ttl=60, show_spinner="Sincronizando solapa de Mastellone...")
 def cargar_datos_mastellone(url_mastellone):
   try:
     xls = pd.ExcelFile(url_mastellone)
@@ -294,10 +357,231 @@ def generar_pdf_base(
   return bytes(output) if not isinstance(output, bytes) else output
 
 
+def generar_pdf_panel_general(
+    df_macro,
+    periodo_titulo,
+    total_litros,
+    temp_prom,
+    grasa_prom,
+    prot_prom,
+    ratio_gp,
+    tambos_activos,
+    df_ranking,
+):
+  ratio_str = f"{ratio_gp:.2f}".replace(".", ",") if pd.notna(ratio_gp) else "S/D"
+  grasa_str = (
+      f"{grasa_prom:.2f}%".replace(".", ",") if pd.notna(grasa_prom) else "S/D"
+  )
+  prot_str = (
+      f"{prot_prom:.2f}%".replace(".", ",") if pd.notna(prot_prom) else "S/D"
+  )
+
+  metricas = [
+      (
+          f"Tambos Activos: {tambos_activos} | Litros Totales:"
+          f" {formato_miles(total_litros)} L"
+      ),
+      (
+          f"Temp. Promedio: {formato_temp(temp_prom)} | Grasa Ponderada:"
+          f" {grasa_str} | Prot. Ponderada: {prot_str}"
+      ),
+      f"Ratio Grasa / Proteína: {ratio_str}",
+      "\nRanking de Tambos por Volumen de Litros",
+  ]
+  headers = [("Código", 30), ("Nombre del Tambo", 100), ("Litros Totales", 60)]
+  mapeo = [
+      lambda r: str(r.Num_Tambo),
+      lambda r: str(r.Tambo),
+      lambda r: formato_miles(r.Litros_Ticket),
+  ]
+  return generar_pdf_base(
+      "Informe de Recolección - Cooperativa",
+      f"Período Evaluado: {periodo_titulo}",
+      metricas,
+      headers,
+      df_ranking,
+      mapeo,
+  )
+
+
+def generar_pdf_bytes(
+    df_productor,
+    tambo_nombre,
+    tambo_id,
+    periodo_texto,
+    args_visibles,
+    es_mensual=False,
+):
+  titulo = (
+      "Resumen mensual de recolección"
+      if es_mensual
+      else "Resumen semanal de recolección"
+  )
+  subtitulo = f"Productor: {tambo_nombre} (Código #{tambo_id})"
+  temp_prom = (
+      df_productor["Temperatura"].mean()
+      if "Temperatura" in df_productor
+      else float("nan")
+  )
+
+  metricas = [
+      f"Período: {periodo_texto}",
+      f"Total Litros: {formato_miles(df_productor['Litros_Ticket'].sum())} L",
+  ]
+  if args_visibles["temp"]:
+    metricas.append(f"Temperatura Promedio: {formato_temp(temp_prom)}")
+
+  partes_solidos = []
+  if (
+      args_visibles["grasa"]
+      and "Grasa" in df_productor
+      and pd.notna(df_productor["Grasa"].mean())
+  ):
+    partes_solidos.append(f"Grasa: {df_productor['Grasa'].mean():.2f}%".replace(".", ","))
+  if (
+      args_visibles["prot"]
+      and "Proteina" in df_productor
+      and pd.notna(df_productor["Proteina"].mean())
+  ):
+    partes_solidos.append(
+        f"Proteína: {df_productor['Proteina'].mean():.2f}%".replace(".", ",")
+    )
+  if (
+      args_visibles["crios"]
+      and "Crioscopia" in df_productor
+      and pd.notna(df_productor["Crioscopia"].mean())
+  ):
+    partes_solidos.append(
+        f"Crioscopia: {df_productor['Crioscopia'].mean():.3f}".replace(
+            ".", ","
+        )
+    )
+  if (
+      args_visibles["ufc"]
+      and "UFC" in df_productor
+      and pd.notna(df_productor["UFC"].mean())
+  ):
+    partes_solidos.append(f"UFC: {formato_miles(df_productor['UFC'].mean())}")
+  if (
+      args_visibles["scc"]
+      and "SCC" in df_productor
+      and pd.notna(df_productor["SCC"].mean())
+  ):
+    partes_solidos.append(f"SCC: {formato_miles(df_productor['SCC'].mean())}")
+
+  if partes_solidos:
+    metricas.append(f"Promedios Lab -> {' | '.join(partes_solidos)}")
+
+  headers = [("Fecha", 26), ("N° Remito", 34), ("Litros", 30)]
+  mapeo = [
+      (
+          lambda r: getattr(r, "Fecha").strftime("%d/%m/%Y")
+          if pd.notna(getattr(r, "Fecha"))
+          else ""
+      ),
+      (
+          lambda r: str(getattr(r, "N_Remito"))
+          if pd.notna(getattr(r, "N_Remito"))
+          else "-"
+      ),
+      (
+          lambda r: formato_miles(getattr(r, "Litros_Ticket"))
+          if pd.notna(getattr(r, "Litros_Ticket"))
+          else "0"
+      ),
+  ]
+
+  if args_visibles["temp"]:
+    headers.append(("Temp", 18))
+    mapeo.append(lambda r: formato_temp(getattr(r, "Temperatura", pd.NA)))
+  if args_visibles["grasa"]:
+    headers.append(("Grasa", 20))
+    mapeo.append(
+        lambda r: f"{getattr(r, 'Grasa'):.2f}%".replace(".", ",")
+        if pd.notna(getattr(r, "Grasa", pd.NA))
+        else "-"
+    )
+  if args_visibles["prot"]:
+    headers.append(("Prot", 20))
+    mapeo.append(
+        lambda r: f"{getattr(r, 'Proteina'):.2f}%".replace(".", ",")
+        if pd.notna(getattr(r, "Proteina", pd.NA))
+        else "-"
+    )
+  if args_visibles["crios"]:
+    headers.append(("Crios", 22))
+    mapeo.append(
+        lambda r: f"{getattr(r, 'Crioscopia'):.3f}".replace(".", ",")
+        if pd.notna(getattr(r, "Crioscopia", pd.NA))
+        else "-"
+    )
+  if args_visibles["ufc"]:
+    headers.append(("UFC", 22))
+    mapeo.append(
+        lambda r: formato_miles(getattr(r, "UFC", pd.NA))
+        if pd.notna(getattr(r, "UFC", pd.NA))
+        else "-"
+    )
+  if args_visibles["scc"]:
+    headers.append(("SCC", 24))
+    mapeo.append(
+        lambda r: formato_miles(getattr(r, "SCC", pd.NA))
+        if pd.notna(getattr(r, "SCC", pd.NA))
+        else "-"
+    )
+
+  return generar_pdf_base(titulo, subtitulo, metricas, headers, df_productor, mapeo)
+
+
+def enviar_correo_productor(
+    destinatario_email,
+    nombre_contacto,
+    tambo_nombre,
+    pdf_bytes,
+    nombre_archivo,
+    tipo_reporte="semanal",
+) -> bool:
+  try:
+    remitente = st.secrets["email"]["remitente"]
+    password = st.secrets["email"]["password"]
+    msg = MIMEMultipart()
+    msg["From"] = remitente
+    destinatarios = [
+        e.strip()
+        for e in destinatario_email.replace(";", ",").split(",")
+        if e.strip()
+    ]
+    msg["To"] = ", ".join(destinatarios)
+    msg["Subject"] = (
+        f"Resumen {tipo_reporte.capitalize()} de Recolección - {tambo_nombre}"
+    )
+    cuerpo_html = (
+        f"<html><body><p>Buenas tardes, <b>{nombre_contacto}</b>:</p><p>Le"
+        f" adjunto el resumen {tipo_reporte} de recolección y calidad de"
+        " leche.</p></body></html>"
+    )
+    msg.attach(MIMEText(cuerpo_html, "html"))
+    part = MIMEBase("application", "octet-stream")
+    part.set_payload(pdf_bytes)
+    encoders.encode_base64(part)
+    part.add_header(
+        "Content-Disposition", f'attachment; filename="{nombre_archivo}"'
+    )
+    msg.attach(part)
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+      server.starttls()
+      server.login(remitente, password)
+      server.sendmail(remitente, destinatarios, msg.as_string())
+    return True
+  except Exception as e:
+    st.error(f"Error de envío SMTP: {e}")
+    return False
+
+
 # --- MENÚ DE NAVEGACIÓN PRINCIPAL DE LA SUPER APP ---
 with st.sidebar:
   if os.path.exists("logo.png"):
-    st.image("logo.png", width=400)
+    st.image("logo.png", width=380)
   st.markdown("---")
 
   modulo_principal = st.radio(
@@ -660,12 +944,11 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
 
 # =========================================================================
-# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN)
+# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN) - Blindado & Litros Mes
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.markdown(
-      '<p class="main-header">🏭 Reporte de Producción y Recepción — Fasón'
-      " Mastellone</p>",
+      '<p class="main-header">🏭 Reporte de Producción y Recepción — Fasón Mastellone</p>',
       unsafe_allow_html=True,
   )
 
@@ -701,6 +984,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
+      # Lectura robusta y garantizada de Datos MHSA.xlsx (solapa 'litros mes')
       df_mast_litros = cargar_datos_mastellone(URL_MASTELLONE)
 
       df_mast_litros_procesado = pd.DataFrame()
@@ -840,7 +1124,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
         else 0
     )
 
-    st.markdown("### 📈 Indicadores Consolidados - Mastellone")
+    st.markdown("### 📈 Indicadores Consolidados — Mastellone")
     g1, g2, g3 = st.columns(3)
     g1.metric("Litros Ingresados", formato_miles(total_litros_ingresados))
     g2.metric("Litros Procesados", formato_miles(total_litros_proc))
@@ -889,7 +1173,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
   )
 
   try:
-    with st.spinner("Sincronizando datos de producción y recepción desde Google Drive..."):
+    with st.spinner("Sincronizando datos de producción y recepción de Coopagro..."):
       raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
       df_prod = pd.DataFrame()
       df_prod['Fecha'] = raw_prod.iloc[:, 0]
@@ -916,7 +1200,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
-      # Usamos URL_REMITOS (archivo oficial de recibo de Coopagro)
       raw_recibo = pd.read_excel(URL_REMITOS)
       df_recibo = pd.DataFrame()
       df_recibo['Fecha_Raw'] = raw_recibo.iloc[:, 1] 
