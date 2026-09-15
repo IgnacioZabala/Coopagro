@@ -37,7 +37,7 @@ FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 
 # ID de Google Drive para Mastellone (Módulo 2 - Reemplazá con tu ID real de Datos MHSA.xlsx)
-FILE_ID_MASTELLONE = "TU_FILE_ID_DATOS_MHSA_AQUI"
+FILE_ID_MASTELLONE = "1zNk6whrwaFucv0d7Vkab5rkJduIHzeAg"
 
 URL_REMITOS = (
     f"https://drive.google.com/uc?export=download&id={FILE_ID_REMITOS}"
