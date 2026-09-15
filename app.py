@@ -31,11 +31,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- IDs de Google Drive ---
+# --- IDs de Google Drive (Fijos y Configurados) ---
 FILE_ID_REMITOS = "16Uh0EwP8tyW79TfJlvcjE8li5Lc6RSLj"
 FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
-FILE_ID_MASTELLONE = "1zNk6whrwaFucv0d7Vkab5rkJduIHzeAg"
+FILE_ID_MASTELLONE = "1Zaqtkadw4Mhgcc8WuuFb1YlXvvWbMsM4"
 ID_PRODUCCION = "1wuIpzYmVuflX_pWoPt4Pz9olWF4LLKOf"
 
 URL_REMITOS = (
@@ -442,14 +442,14 @@ def generar_pdf_bytes(
     headers.append(("Prot", 20))
     mapeo.append(
         lambda r: f"{getattr(r, 'Proteina'):.2f}%".replace(".", ",")
-        if pd.notna(getattr(r, "Proteina", pd.NA))
+        if pd.notna(getattr(r, 'Proteina', pd.NA))
         else "-"
     )
   if args_visibles["crios"]:
     headers.append(("Crios", 22))
     mapeo.append(
         lambda r: f"{getattr(r, 'Crioscopia'):.3f}".replace(".", ",")
-        if pd.notna(getattr(r, "Crioscopia", pd.NA))
+        if pd.notna(getattr(r, 'Crioscopia', pd.NA))
         else "-"
     )
   if args_visibles["ufc"]:
@@ -517,8 +517,8 @@ def enviar_correo_productor(
 
 # --- MENÚ DE NAVEGACIÓN PRINCIPAL DE LA SUPER APP ---
 with st.sidebar:
-  st.image("https://cdn-icons-png.flaticon.com/512/2830/2830305.png", width=60)
-  st.title("Gestión Planta Tandil")
+  if os.path.exists("logo.png"):
+    st.image("logo.png", width=160)
   st.markdown("---")
 
   modulo_principal = st.radio(
@@ -533,7 +533,7 @@ with st.sidebar:
 
 
 # =========================================================================
-# MÓDULO 1: RECEPCIÓN Y CALIDAD COOPAGRO (Restaurado completo)
+# MÓDULO 1: RECEPCIÓN Y CALIDAD COOPAGRO (Blindado e Intacto)
 # =========================================================================
 if modulo_principal == "🥛 Recepción y Calidad Coopagro":
   try:
@@ -1187,7 +1187,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
 
 # =========================================================================
-# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN) - FILTRO CORREGIDO
+# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN) - FILTRO DE MES ROBUSTO
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.markdown(
@@ -1227,69 +1227,68 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Año"] = df_prod["Fecha"].dt.year
       df_prod["Mes"] = df_prod["Fecha"].dt.month
 
-      # Filtramos estrictamente Mastellone[cite: 3]
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
       # 2. Leer Litros Mes desde Datos MHSA.xlsx (Solapa 'litros mes')
       df_mast_litros = cargar_datos_mastellone(URL_MASTELLONE)
 
-      # Procesamiento inteligente de la solapa litros mes de Mastellone
+      # Lógica robusta para leer columnas de mes, año y litros de la solapa 'litros mes'
       df_mast_litros_procesado = pd.DataFrame()
       if not df_mast_litros.empty:
-        # Buscamos columnas relevantes por nombre o posición
-        col_fecha = next(
-            (
-                c
-                for c in df_mast_litros.columns
-                if any(x in c.lower() for x in ["fecha", "mes", "periodo", "date"])
-            ),
-            df_mast_litros.columns[0],
-        )
+        # Identificamos la columna de litros (buscando palabras clave o tomando la última)
+        cols_lower = [str(c).lower() for c in df_mast_litros.columns]
         col_litros = next(
             (
-                c
-                for c in df_mast_litros.columns
-                if any(x in c.lower() for x in ["litro", "volumen", "cantidad", "total"])
+                df_mast_litros.columns[i]
+                for i, c in enumerate(cols_lower)
+                if any(x in c for x in ["litro", "volumen", "cantidad", "total"])
             ),
             df_mast_litros.columns[-1],
         )
 
-        df_mast_litros_procesado["Fecha_Parsed"] = pd.to_datetime(
-            df_mast_litros[col_fecha], errors="coerce"
+        # Buscamos columnas de fecha, mes o año
+        col_fecha = next(
+            (
+                df_mast_litros.columns[i]
+                for i, c in enumerate(cols_lower)
+                if any(x in c for x in ["fecha", "mes", "periodo", "date"])
+            ),
+            None,
         )
-        
-        # Si la celda es un número de mes directo (ej: 8 en vez de una fecha completa), lo manejamos
-        if df_mast_litros_procesado["Fecha_Parsed"].isna().all():
-          # Intentamos buscar si alguna columna tiene el año y otra el mes
-          col_anio = next((c for c in df_mast_litros.columns if "año" in c.lower() or "anio" in c.lower()), None)
-          col_mes_num = next((c for c in df_mast_litros.columns if "mes" in c.lower()), None)
-          if col_anio and col_mes_num:
-            df_mast_litros_procesado["Año"] = pd.to_numeric(df_mast_litros[col_anio], errors="coerce")
-            df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros[col_mes_num], errors="coerce")
-          else:
-            # Fallback usando las fechas de la producción de mastellone si coinciden los índices
-            df_mast_litros_procesado["Año"] = df_mastellone_prod["Año"].iloc[0] if not df_mastellone_prod.empty else 2026
-            df_mast_litros_procesado["Mes"] = df_mastellone_prod["Mes"].iloc[0] if not df_mastellone_prod.empty else 8
-        else:
-          df_mast_litros_procesado["Año"] = df_mast_litros_procesado["Fecha_Parsed"].dt.year
-          df_mast_litros_procesado["Mes"] = df_mast_litros_procesado["Fecha_Parsed"].dt.month
 
         df_mast_litros_procesado["Litros"] = pd.to_numeric(
             df_mast_litros[col_litros], errors="coerce"
         ).fillna(0)
+
+        if col_fecha:
+          # Intentamos parsear fechas completas
+          fechas_parsed = pd.to_datetime(
+              df_mast_litros[col_fecha], errors="coerce"
+          )
+          if fechas_parsed.notna().any():
+            df_mast_litros_procesado["Año"] = fechas_parsed.dt.year
+            df_mast_litros_procesado["Mes"] = fechas_parsed.dt.month
+          else:
+            # Si contiene números de mes directos (1 al 12)
+            df_mast_litros_procesado["Mes"] = pd.to_numeric(
+                df_mast_litros[col_fecha], errors="coerce"
+            )
+            df_mast_litros_procesado["Año"] = 2026  # Año por defecto
+        else:
+          # Si no hay columna de fecha clara, mapeamos por número de fila (Fila 0 = Enero, Fila 7 = Agosto, etc.)
+          df_mast_litros_procesado["Mes"] = range(
+              1, len(df_mast_litros_procesado) + 1
+          )
+          df_mast_litros_procesado["Año"] = 2026
 
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.markdown("### 🔍 Filtros Mastellone")
     opciones_anio = ["Todos"] + (
         sorted(df_mastellone_prod["Año"].unique().tolist())
         if len(df_mastellone_prod) > 0
-        else []
+        else [2026]
     )
-    opciones_mes = ["Todos"] + (
-        sorted(df_mastellone_prod["Mes"].unique().tolist())
-        if len(df_mastellone_prod) > 0
-        else []
-    )
+    opciones_mes = ["Todos"] + list(range(1, 13))
 
     with st.sidebar.container():
       filtro_anio = st.selectbox("📅 Seleccionar Año", opciones_anio, key="m_anio")
@@ -1347,9 +1346,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     total_litros_ingresados = 0.0
     if not df_mast_litros_procesado.empty:
       df_litros_f = df_mast_litros_procesado.copy()
-      if filtro_anio != "Todos":
+      if filtro_anio != "Todos" and "Año" in df_litros_f.columns:
         df_litros_f = df_litros_f[df_litros_f["Año"] == filtro_anio]
-      if filtro_mes != "Todos":
+      if filtro_mes != "Todos" and "Mes" in df_litros_f.columns:
         df_litros_f = df_litros_f[df_litros_f["Mes"] == filtro_mes]
       total_litros_ingresados = df_litros_f["Litros"].sum()
 
