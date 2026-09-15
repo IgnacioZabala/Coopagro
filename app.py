@@ -247,7 +247,7 @@ def generar_pdf_base(
           align,
       )
 
-  output = pdf.output(dest="S")
+output = pdf.output(dest="S")
 return bytes(output) if not isinstance(output, bytes) else output
 
 
