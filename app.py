@@ -1280,7 +1280,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros[col_fecha], errors="coerce").fillna(1).astype(int)
                 df_mast_litros_procesado["Año"] = 2026
 
-    # --- BARRA LATERAL (FILTROS) ---
+       # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.markdown("### 🔍 Filtros Mastellone")
     opciones_anio = ["Todos"] + (
         sorted(df_mastellone_prod["Año"].unique().tolist())
@@ -1290,8 +1290,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     opciones_mes = ["Todos"] + list(range(1, 13))
 
     with st.sidebar.container():
-      filtro_anio = st.selectbox("📅 Seleccionar Año", opciones_anio, key="m_anio")
-      filtro_mes = st.selectbox("📆 Seleccionar Mes", opciones_mes, key="m_mes")
+      # Usamos keys únicas que no choquen con ninguna otra sección de la app
+      filtro_anio = st.selectbox("📅 Seleccionar Año", opciones_anio, key="m_anio_mastellone")
+      filtro_mes = st.selectbox("📆 Seleccionar Mes", opciones_mes, key="m_mes_mastellone")
 
     # Filtrar datos de producción por año y mes
     df_filtrado = df_mastellone_prod.copy()
