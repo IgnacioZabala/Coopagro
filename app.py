@@ -51,7 +51,7 @@ if modulo == "🥛 Recepción Coopagro":
     st.markdown("Panel conectado automáticamente a Google Drive.")
     
     # PEGA TU FILE ID ACÁ ENTRE LAS COMILLAS
-    FILE_ID_RECIBO = "TU_FILE_ID_AQUI" 
+    FILE_ID_RECIBO = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2" 
     
     if FILE_ID_RECIBO == "TU_FILE_ID_AQUI":
         st.warning("⚠️ Por favor, configurá tu FILE_ID de Google Drive en el código del `app.py` para ver los datos.")
