@@ -1443,7 +1443,8 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
-      raw_recibo = pd.read_excel(URL_RECIBO)
+      # 2. Leer Recibo de Leche (Coopagro) usando URL_REMITOS
+      raw_recibo = pd.read_excel(URL_REMITOS)
       df_recibo = pd.DataFrame()
       df_recibo['Fecha_Raw'] = raw_recibo.iloc[:, 1] 
       df_recibo['Litros Ingresados'] = pd.to_numeric(raw_recibo.iloc[:, 5], errors='coerce').fillna(0)
