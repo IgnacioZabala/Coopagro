@@ -145,7 +145,7 @@ def procesar_lote_mastellone(lote_str):
   return mapping_prod.get(prod_code, f"Desconocido ({prod_code})"), mapping_grupo.get(prod_code, "Otro")
 
 # =========================================================================
-# FUNCIONES DE PDF (CON FIX DE BYTEARRAY)
+# FUNCIONES DE PDF
 # =========================================================================
 def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list, df_datos: pd.DataFrame, filas_mapeo: list, usable_width: int = 190):
   pdf = FPDF(orientation="P", unit="mm", format="A4")
@@ -230,11 +230,11 @@ def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_
       lambda r: formato_miles(getattr(r, "Litros_Ticket")) if pd.notna(getattr(r, "Litros_Ticket")) else "0"
   ]
   if args_visibles["temp"]: headers.append(("Temp", 18)); mapeo.append(lambda r: formato_temp(getattr(r, "Temperatura", pd.NA)))
-  if args_visibles["grasa"]: headers.append(("Grasa", 20)); mapeo.append(lambda r: f"{getattr(r, 'Grasa'):.2f}%".replace(".", ",") if pd.notna(getattr(r, "Grasa", pd.NA)) else "-")
-  if args_visibles["prot"]: headers.append(("Prot", 20)); mapeo.append(lambda r: f"{getattr(r, 'Proteina'):.2f}%".replace(".", ",") if pd.notna(getattr(r, "Proteina", pd.NA)) else "-")
-  if args_visibles["crios"]: headers.append(("Crios", 22)); mapeo.append(lambda r: f"{getattr(r, 'Crioscopia'):.3f}".replace(".", ",") if pd.notna(getattr(r, "Crioscopia", pd.NA)) else "-")
-  if args_visibles["ufc"]: headers.append(("UFC", 22)); mapeo.append(lambda r: formato_miles(getattr(r, "UFC", pd.NA)) if pd.notna(getattr(r, "UFC", pd.NA)) else "-")
-  if args_visibles["scc"]: headers.append(("SCC", 24)); mapeo.append(lambda r: formato_miles(getattr(r, "SCC", pd.NA)) if pd.notna(getattr(r, "SCC", pd.NA)) else "-")
+  if args_visibles["grasa"]: headers.append(("Grasa", 20)); mapeo.append(lambda r: f"{getattr(r, 'Grasa'):.2f}%".replace(".", ",") if pd.notna(getattr(r, 'Grasa', pd.NA)) else "-")
+  if args_visibles["prot"]: headers.append(("Prot", 20)); mapeo.append(lambda r: f"{getattr(r, 'Proteina'):.2f}%".replace(".", ",") if pd.notna(getattr(r, 'Proteina', pd.NA)) else "-")
+  if args_visibles["crios"]: headers.append(("Crios", 22)); mapeo.append(lambda r: f"{getattr(r, 'Crioscopia'):.3f}".replace(".", ",") if pd.notna(getattr(r, 'Crioscopia', pd.NA)) else "-")
+  if args_visibles["ufc"]: headers.append(("UFC", 22)); mapeo.append(lambda r: formato_miles(getattr(r, 'UFC', pd.NA)) if pd.notna(getattr(r, 'UFC', pd.NA)) else "-")
+  if args_visibles["scc"]: headers.append(("SCC", 24)); mapeo.append(lambda r: formato_miles(getattr(r, 'SCC', pd.NA)) if pd.notna(getattr(r, 'SCC', pd.NA)) else "-")
 
   return generar_pdf_base(titulo, subtitulo, metricas, headers, df_productor, mapeo)
 
@@ -450,7 +450,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 st.success(f"Correo enviado a {email_t}")
           else: st.warning("Tambo sin email configurado.")
 
-          # Construcción dinámica de la tabla visual con las columnas solicitadas
           df_tabla_visual = pd.DataFrame()
           df_tabla_visual["Fecha"] = df_per["Fecha"].dt.strftime("%d/%m/%Y")
           df_tabla_visual["N° Remito"] = df_per["N_Remito"]
@@ -625,7 +624,16 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
     def generar_pdf_coopagro(dataframe_gerencia, titulo_dinamico, lit_ingresados, rend_gerencia, ratio_pond_gerenc, df_prod_raw_gerencia):
         pdf = FPDF(orientation='P', unit='mm', format='A4')
+        pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
+        
+        # LOGO CENTRALIZADO
+        if os.path.exists("logo.png"):
+            pdf.image("logo.png", x=65, y=10, w=80)
+            pdf.set_y(52)
+        else:
+            pdf.set_y(15)
+
         pdf.set_font("Arial", 'B', 13)
         pdf.cell(190, 7, txt=titulo_dinamico, ln=True, align='C')
         pdf.ln(3)
@@ -687,7 +695,11 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         if filtro_mes_coop != "Todos": df_gerencia_raw_pdf = df_gerencia_raw_pdf[df_gerencia_raw_pdf['Mes'] == filtro_mes_coop]
         df_gerencia_raw_pdf['PT_Total'] = df_gerencia_raw_pdf['Producto Terminado'] + df_gerencia_raw_pdf['PNC']
 
-        titulo_pdf = f"Reporte Coopagro {filtro_mes_coop}-{filtro_anio_coop}"
+        # Título formateado con Nombre de Mes en Español y Año (ej: Reporte producción Coopagro Septiembre 2026)
+        mes_nombre_pdf = MESES_ES.get(filtro_mes_coop, "") if filtro_mes_coop != "Todos" else "General"
+        anio_pdf = str(filtro_anio_coop) if filtro_anio_coop != "Todos" else "2026"
+        titulo_pdf = f"Reporte producción Coopagro {mes_nombre_pdf} {anio_pdf}"
+
         pdf_bytes = generar_pdf_coopagro(df_consolidado, titulo_pdf, total_litros_ingresados, rendimiento_ingreso, ratio_ponderado, df_gerencia_raw_pdf)
         
         st.download_button(label="📄 Descargar Reporte en PDF", data=pdf_bytes, file_name=f"{titulo_pdf.replace(' ', '_')}.pdf", mime="application/pdf")
