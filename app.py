@@ -711,29 +711,44 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     st.error(f"Error en Coopagro: {e}")
 
 # =========================================================================
-# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS (CONECTADO A FORMS)
+# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS (CONECTADO A FORMS VIA CSV)
 # =========================================================================
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
   st.header("📦 Control de Stock, Costos Variables y Punto de Pedido")
+  st.markdown("Gestión de inventario conectada a los formularios de ingresos y recuento físico.")
+  
   try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    df_stock_real = conn.read(spreadsheet=URL_INSUMOS_SHEET, worksheet="Stock")
-    df_ingresos = conn.read(spreadsheet=URL_INSUMOS_SHEET, worksheet="Ingresos")
+    # URL directa de exportación a CSV de las solapas del Google Sheet unificado
+    sheet_id = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
+    url_stock = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Stock"
+    url_ingresos = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Ingresos"
+    
+    df_stock_real = pd.read_csv(url_stock)
+    df_ingresos = pd.read_csv(url_ingresos)
 
-    st.subheader("📋 Datos Recibidos de Formularios")
+    st.success("¡Datos sincronizados correctamente desde Google Forms / Sheets!")
+
     col_a, col_b = st.columns(2)
     with col_a:
-      st.markdown("**Últimos Recuentos Físicos (Form Stock)**")
-      st.dataframe(df_stock_real.tail(5), use_container_width=True, hide_index=True)
+      st.markdown("### 📋 Últimos Recuentos Físicos (Stock)")
+      if not df_stock_real.empty:
+        st.dataframe(df_stock_real.tail(10), use_container_width=True, hide_index=True)
+      else:
+        st.info("Aún no hay registros en la solapa 'Stock'.")
+        
     with col_b:
-      st.markdown("**Últimos Ingresos de Mercadería (Form Ingresos)**")
-      st.dataframe(df_ingresos.tail(5), use_container_width=True, hide_index=True)
+      st.markdown("### 🚚 Últimos Ingresos de Mercadería")
+      if not df_ingresos.empty:
+        st.dataframe(df_ingresos.tail(10), use_container_width=True, hide_index=True)
+      else:
+        st.info("Aún no hay registros en la solapa 'Ingresos'.")
 
     st.markdown("---")
-    st.subheader("⚙️ Simulador y Proyección de Consumo")
+    st.subheader("⚙️ Simulador y Proyección de Consumo de Insumos")
     tinas_proyectadas = st.number_input("Cantidad de tinas (8000L) a planificar:", min_value=1, value=10, step=1)
-    st.info(f"Proyectando consumo para {tinas_proyectadas} tinas ({tinas_proyectadas * 8000:,} Litros). El motor cruzará stock físico, compras y costos unitarios automáticamente.")
+    
+    litros_proyectados = tinas_proyectadas * 8000
+    st.info(f"Proyectando consumo para **{tinas_proyectadas} tinas** ({litros_proyectados:,} Litros).")
 
   except Exception as e:
-    st.warning("Esperando registros en las pestañas 'Stock' e 'Ingresos' del Google Sheet unificado para activar los cálculos automáticos.")
-    st.code(str(e))
+    st.error(f"No se pudieron leer las solapas 'Stock' o 'Ingresos'. Verificá que el archivo de Google Sheets tenga esas solapas creadas exactamente con esos nombres y esté compartido públicamente. Detalle: {e}")
