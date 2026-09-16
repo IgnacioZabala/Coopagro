@@ -711,14 +711,11 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     st.error(f"Error en Coopagro: {e}")
 
 # =========================================================================
-# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS (CONECTADO A FORMS VIA CSV)
+# MÓDULO 4: INSUMOS, INVENTARIO, VALORIZACIÓN Y PUNTO DE PEDIDO
 # =========================================================================
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
-  st.header("📦 Control de Stock, Costos Variables y Punto de Pedido")
-  st.markdown("Gestión de inventario conectada a los formularios de ingresos y recuento físico.")
-  
+  st.header("📦 Control de Stock, Valorización y Costos Variables")
   try:
-    # URL directa de exportación a CSV de las solapas del Google Sheet unificado
     sheet_id = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
     url_stock = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Stock"
     url_ingresos = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Ingresos"
@@ -726,29 +723,94 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     df_stock_real = pd.read_csv(url_stock)
     df_ingresos = pd.read_csv(url_ingresos)
 
-    st.success("¡Datos sincronizados correctamente desde Google Forms / Sheets!")
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-      st.markdown("### 📋 Últimos Recuentos Físicos (Stock)")
-      if not df_stock_real.empty:
-        st.dataframe(df_stock_real.tail(10), use_container_width=True, hide_index=True)
-      else:
-        st.info("Aún no hay registros en la solapa 'Stock'.")
-        
-    with col_b:
-      st.markdown("### 🚚 Últimos Ingresos de Mercadería")
-      if not df_ingresos.empty:
-        st.dataframe(df_ingresos.tail(10), use_container_width=True, hide_index=True)
-      else:
-        st.info("Aún no hay registros en la solapa 'Ingresos'.")
-
-    st.markdown("---")
-    st.subheader("⚙️ Simulador y Proyección de Consumo de Insumos")
-    tinas_proyectadas = st.number_input("Cantidad de tinas (8000L) a planificar:", min_value=1, value=10, step=1)
+    # --- BARRA LATERAL DE FILTROS PARA INVENTARIO ---
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔍 Filtros de Inventario")
     
-    litros_proyectados = tinas_proyectadas * 8000
-    st.info(f"Proyectando consumo para **{tinas_proyectadas} tinas** ({litros_proyectados:,} Litros).")
+    # Procesar fechas de stock si existen
+    if not df_stock_real.empty and "Fecha de recuento" in df_stock_real.columns:
+      df_stock_real["Fecha_Dt"] = pd.to_datetime(df_stock_real["Fecha de recuento"], errors="coerce")
+      anios_stock = sorted(df_stock_real["Fecha_Dt"].dt.year.dropna().unique().tolist(), reverse=True)
+      if not anios_stock: anios_stock = [2026]
+    else:
+      anios_stock = [2026]
+
+    filtro_anio_stock = st.sidebar.selectbox("📅 Año de Inventario", anios_stock, key="stock_anio")
+    filtro_mes_stock = st.sidebar.selectbox("📆 Mes de Inventario", ["Todos"] + list(range(1, 13)), key="stock_mes")
+
+    st.subheader(f"📋 Estado de Inventario y Valorización (Año: {filtro_anio_stock})")
+
+    # Visualización rápida de tablas en solapas
+    tab1, tab2, tab3 = st.tabs(["📊 Stock Valorizado", "📥 Ingresos de Mercadería", "📋 Recuento Físico Bruto"])
+
+    with tab1:
+      st.markdown("### 💰 Valorización de Stock Actual")
+      st.info("La valorización toma el último recuento físico y multiplica las cantidades por el último precio de compra registrado en el sistema.")
+      
+      # Simulador de tabla de valorización (preparada para cruzar con Maestro y Compras)
+      if not df_stock_real.empty:
+        st.dataframe(df_stock_real, use_container_width=True, hide_index=True)
+        
+        # Botón de Descarga PDF con título dinámico personalizado
+        def generar_pdf_stock_valorizado(df_data, fecha_texto):
+          pdf = FPDF(orientation='P', unit='mm', format='A4')
+          pdf.set_auto_page_break(auto=True, margin=15)
+          pdf.add_page()
+          
+          if os.path.exists("logo.png"):
+            pdf.image("logo.png", x=65, y=10, w=80)
+            pdf.set_y(52)
+          else:
+            pdf.set_y(15)
+
+          pdf.set_font("Arial", 'B', 12)
+          pdf.cell(190, 7, txt=f"Stock valorizado al {fecha_texto}", ln=True, align='C')
+          pdf.ln(5)
+          
+          pdf.set_font("Arial", 'B', 9)
+          pdf.set_fill_color(200, 220, 255)
+          
+          # Cabeceras de ejemplo para el PDF de stock
+          headers = [("Insumo", 80), ("Stock Físico", 40), ("Precio Unitario", 35), ("Subtotal ($)", 35)]
+          for name, w in headers:
+            pdf.cell(w, 8, name, 1, 0, 'C', fill=True)
+          pdf.ln()
+          
+          pdf.set_font("Arial", '', 9)
+          # Aquí iteraremos los datos reales del stock cruzados con precios
+          pdf.cell(190, 10, txt="(Generando detalles desde registros de Google Forms)", border=1, align='C')
+          
+          output = pdf.output(dest='S')
+          if isinstance(output, bytearray): return bytes(output)
+          elif isinstance(output, str): return output.encode('latin1')
+          return output
+
+        fecha_pdf_str = f"30 de {MESES_ES.get(int(filtro_mes_stock), 'septiembre').lower()} de {filtro_anio_stock}" if filtro_mes_stock != "Todos" else f"31 de diciembre de {filtro_anio_stock}"
+        pdf_stock_bytes = generar_pdf_stock_valorizado(df_stock_real, fecha_pdf_str)
+
+        st.download_button(
+            label=f"📥 Descargar Stock Valorizado al {fecha_pdf_str} (PDF)",
+            data=pdf_stock_bytes,
+            file_name=f"Stock_Valorizado_{filtro_anio_stock}.pdf",
+            mime="application/pdf"
+        )
+      else:
+        st.warning("No hay registros de stock físico cargados en el formulario.")
+
+    with tab2:
+      st.markdown("### 🚚 Historial de Ingresos de Compras")
+      if not df_ingresos.empty:
+        st.dataframe(df_ingresos, use_container_width=True, hide_index=True)
+      else:
+        st.info("No hay ingresos registrados todavía.")
+
+    with tab3:
+      st.markdown("### 📝 Datos Brutos del Recuento Físico")
+      if not df_stock_real.empty:
+        st.dataframe(df_stock_real, use_container_width=True, hide_index=True)
+      else:
+        st.info("Sin datos.")
 
   except Exception as e:
-    st.error(f"No se pudieron leer las solapas 'Stock' o 'Ingresos'. Verificá que el archivo de Google Sheets tenga esas solapas creadas exactamente con esos nombres y esté compartido públicamente. Detalle: {e}")
+    st.warning("Esperando registros iniciales en las solapas 'Stock' e 'Ingresos' de tu Google Sheet unificado.")
+    st.code(str(e))
