@@ -1,5 +1,5 @@
 streamlit
 pandas
 openpyxl
-fpdf2
-plotly
+xlrd
+st-gsheets-connection
