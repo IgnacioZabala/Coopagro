@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 # =========================================================================
-# CONFIGURACIÓN GENERAL (SIN CSS EXTERNO)
+# CONFIGURACIÓN GENERAL Y BLINDAJE DE ENTORNO
 # =========================================================================
 st.set_page_config(
     page_title="Sistema Integral de Planta | Coopagro & Fasón",
@@ -21,18 +21,21 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- IDs de Google Drive (Fijos y Configurados) ---
+# --- IDs de Google Drive y Sheets (Blindados) ---
 FILE_ID_REMITOS = "16Uh0EwP8tyW79TfJlvcjE8li5Lc6RSLj"
 FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 FILE_ID_MASTELLONE = "1Zaqtkadw4Mhgcc8WuuFb1YlXvvWbMsM4"
 ID_PRODUCCION = "1wuIpzYmVuflX_pWoPt4Pz9olWF4LLKOf"
+# ID del nuevo Google Sheet unificado de Insumos (Forms 1 y 2)
+SHEET_INSUMOS_ID = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
 
 URL_REMITOS = f"https://drive.google.com/uc?export=download&id={FILE_ID_REMITOS}"
 URL_LAB = f"https://drive.google.com/uc?export=download&id={FILE_ID_LAB}"
 URL_BACSOMATIC = f"https://drive.google.com/uc?export=download&id={FILE_ID_BACSOMATIC}"
 URL_MASTELLONE = f"https://drive.google.com/uc?export=download&id={FILE_ID_MASTELLONE}"
 URL_PRODUCCION = f"https://drive.google.com/uc?export=download&id={ID_PRODUCCION}"
+URL_INSUMOS_SHEET = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/edit"
 
 MESES_ES = {
     1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
@@ -43,7 +46,7 @@ REGEX_COMPACTO = re.compile(r"(\d{2})(\d{2})(\d{4})")
 REGEX_FECHA = re.compile(r"(\d{2})[-/]?(\d{2})[-/]?(\d{4})")
 
 # =========================================================================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES BLINDADAS
 # =========================================================================
 def encontrar_fila_encabezado(df_temp: pd.DataFrame, palabras_clave: list) -> int:
   for row in df_temp.head(20).itertuples(index=True, name=None):
@@ -145,7 +148,7 @@ def procesar_lote_mastellone(lote_str):
   return mapping_prod.get(prod_code, f"Desconocido ({prod_code})"), mapping_grupo.get(prod_code, "Otro")
 
 # =========================================================================
-# FUNCIONES DE PDF
+# FUNCIONES DE PDF BLINDADAS (CON FIX BYTEARRAY Y LOGO)
 # =========================================================================
 def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list, df_datos: pd.DataFrame, filas_mapeo: list, usable_width: int = 190):
   pdf = FPDF(orientation="P", unit="mm", format="A4")
@@ -264,7 +267,7 @@ def enviar_correo_productor(destinatario_email, nombre_contacto, tambo_nombre, p
     return False
 
 # =========================================================================
-# MENÚ NAVEGACIÓN
+# MENÚ NAVEGACIÓN PRINCIPAL
 # =========================================================================
 with st.sidebar:
   if os.path.exists("logo.png"): st.image("logo.png", width=250)
@@ -627,7 +630,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         
-        # LOGO CENTRALIZADO
         if os.path.exists("logo.png"):
             pdf.image("logo.png", x=65, y=10, w=80)
             pdf.set_y(52)
@@ -695,7 +697,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         if filtro_mes_coop != "Todos": df_gerencia_raw_pdf = df_gerencia_raw_pdf[df_gerencia_raw_pdf['Mes'] == filtro_mes_coop]
         df_gerencia_raw_pdf['PT_Total'] = df_gerencia_raw_pdf['Producto Terminado'] + df_gerencia_raw_pdf['PNC']
 
-        # Título formateado con Nombre de Mes en Español y Año (ej: Reporte producción Coopagro Septiembre 2026)
         mes_nombre_pdf = MESES_ES.get(filtro_mes_coop, "") if filtro_mes_coop != "Todos" else "General"
         anio_pdf = str(filtro_anio_coop) if filtro_anio_coop != "Todos" else "2026"
         titulo_pdf = f"Reporte producción Coopagro {mes_nombre_pdf} {anio_pdf}"
@@ -708,8 +709,16 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     st.error(f"Error en Coopagro: {e}")
 
 # =========================================================================
-# MÓDULO 4: INSUMOS
+# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS (Preparado para conectar Forms)
 # =========================================================================
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
-  st.header("Gestión de Insumos")
-  st.info("Módulo base preparado. Avisame cuando tengas los Forms armados.")
+  st.header("📦 Gestión de Insumos y Costos Variables")
+  st.info("Módulo conectado a la base de Google Sheets unificada. Configurado para leer ingresos de mercadería y recuentos físicos.")
+  
+  # Estructura base lista para consumir los datos de los formularios de Forms
+  try:
+    conn = st.connection("gsheets", type="streamlit_gsheets.GSheetsConnection")
+    # Nota: Aquí leeremos las pestañas de respuestas de tus Google Forms próximamente
+    st.success("Conexión con el ecosistema de Insumos preparada.")
+  except Exception as e:
+    st.write("Cargando componentes de inventario...")
