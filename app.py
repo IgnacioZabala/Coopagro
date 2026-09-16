@@ -188,7 +188,6 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
       pdf.cell(col_w, 7, str(val), 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
 
   output = pdf.output(dest="S")
-  # SOLUCIÓN DEL BUG BYTEARRAY DE FPDF
   if isinstance(output, bytearray): return bytes(output)
   elif isinstance(output, str): return output.encode('latin1')
   return output
@@ -269,7 +268,6 @@ def enviar_correo_productor(destinatario_email, nombre_contacto, tambo_nombre, p
 # =========================================================================
 with st.sidebar:
   if os.path.exists("logo.png"): st.image("logo.png", width=250)
-  st.title("Planta Tandil")
   st.markdown("---")
   modulo_principal = st.radio(
       "Seleccionar Módulo:",
@@ -452,7 +450,26 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 st.success(f"Correo enviado a {email_t}")
           else: st.warning("Tambo sin email configurado.")
 
-          st.dataframe(df_per[["Fecha", "N_Remito", "Litros_Ticket", "Temperatura"]], use_container_width=True, hide_index=True)
+          # Construcción dinámica de la tabla visual con las columnas solicitadas
+          df_tabla_visual = pd.DataFrame()
+          df_tabla_visual["Fecha"] = df_per["Fecha"].dt.strftime("%d/%m/%Y")
+          df_tabla_visual["N° Remito"] = df_per["N_Remito"]
+          df_tabla_visual["Litros"] = df_per["Litros_Ticket"].apply(formato_miles)
+
+          if v_temp and "Temperatura" in df_per:
+            df_tabla_visual["Temperatura"] = df_per["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
+          if v_grasa and "Grasa" in df_per:
+            df_tabla_visual["Grasa"] = df_per["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+          if v_prot and "Proteina" in df_per:
+            df_tabla_visual["Proteína"] = df_per["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+          if v_crios and "Crioscopia" in df_per:
+            df_tabla_visual["Crioscopia"] = df_per["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
+          if v_ufc and "UFC" in df_per:
+            df_tabla_visual["UFC"] = df_per["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+          if v_scc and "SCC" in df_per:
+            df_tabla_visual["SCC"] = df_per["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+
+          st.dataframe(df_tabla_visual, use_container_width=True, hide_index=True)
 
     elif vista_coop == "Envío Masivo Semanal":
       st.header("📤 Envío Masivo Semanal")
