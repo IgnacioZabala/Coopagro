@@ -11,10 +11,12 @@ from fpdf import FPDF
 import pandas as pd
 import streamlit as st
 
-# 1. Configuración general & Estilo Power BI Dashboard UI/UX
+# =========================================================================
+# 1. CONFIGURACIÓN Y UX/UI (DISEÑO MODERNO Y LIMPIO TIPO ANALYTICS)
+# =========================================================================
 st.set_page_config(
-    page_title="Tablero Ejecutivo de Planta | Coopagro & Fasón",
-    page_icon="📊",
+    page_title="Sistema Integral de Planta | Coopagro & Fasón",
+    page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -22,85 +24,85 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        /* Fondo general estilo lienzo de Power BI */
-        .stApp { background-color: #f1f5f9; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; }
+        /* Fondo general de la aplicación (Gris muy suave para contraste) */
+        .stApp { 
+            background-color: #f3f4f6; 
+            font-family: 'Open Sans', 'Helvetica Neue', sans-serif; 
+        }
         
-        /* Tarjetas estilo Power BI Tile con borde de acento izquierdo */
+        /* Barra lateral (Sidebar) oscura y limpia */
+        section[data-testid="stSidebar"] {
+            background-color: #3b4b5a; 
+            border-right: none;
+        }
+        section[data-testid="stSidebar"] * {
+            color: #e5e7eb !important; /* Texto claro en la barra lateral */
+        }
+        
+        /* Tarjetas de métricas (KPIs) - Blancas, sin bordes pesados, sombra suave */
         div[data-testid="metric-container"] {
             background-color: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-left: 4px solid #2563eb;
-            padding: 16px 20px;
-            border-radius: 6px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
-            transition: all 0.25s ease;
+            padding: 16px 24px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+            transition: box-shadow 0.2s ease-in-out;
+            border: 1px solid #e5e7eb;
         }
         div[data-testid="metric-container"]:hover {
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
-            border-color: #cbd5e1;
-            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
         }
+        /* Etiqueta de la métrica (Gris, pequeña, seminegrita) */
         div[data-testid="metric-container"] label {
-            color: #475569 !important;
+            color: #6b7280 !important;
             font-weight: 600 !important;
-            font-size: 0.8rem !important;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+            font-size: 0.9rem !important;
+            margin-bottom: 6px;
         }
+        /* Valor de la métrica (Oscuro, muy grande, peso normal) */
         div[data-testid="metric-container"] [data-testid="stMetricValue"] {
-            color: #0f172a !important;
-            font-weight: 800 !important;
-            font-size: 1.85rem !important;
+            color: #1f2937 !important;
+            font-weight: 400 !important;
+            font-size: 2.2rem !important;
         }
 
-        /* Encabezados y Títulos tipo Reporte Ejecutivo */
+        /* Encabezados principales - Línea divisoria muy fina abajo */
         .main-header {
-            color: #0f172a;
-            font-weight: 800;
+            color: #374151;
+            font-weight: 600;
             font-size: 1.8rem;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #cbd5e1;
-            margin-bottom: 20px;
-            letter-spacing: -0.01em;
-            background: linear-gradient(90deg, #ffffff 0%, #f8fafc 100%);
-            padding-left: 15px;
-            border-radius: 6px;
-            border-left: 6px solid #1e293b;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #d1d5db;
+            margin-top: 15px;
+            margin-bottom: 25px;
         }
 
-        /* Tablas tipo Data Grid corporativo */
-        thead tr th {
-            background-color: #1e293b !important;
-            color: #ffffff !important;
-            font-weight: 700 !important;
-            font-size: 0.85rem !important;
-            text-align: center !important;
-            padding: 10px !important;
-        }
-        
-        /* Sidebar estilo Panel de Filtros Power BI */
-        section[data-testid="stSidebar"] {
-            background-color: #0f172a;
-            color: #f8fafc;
-            border-right: 1px solid #1e293b;
-        }
-        section[data-testid="stSidebar"] .stRadio label, 
-        section[data-testid="stSidebar"] .stSelectbox label,
-        section[data-testid="stSidebar"] h3 {
-            color: #f8fafc !important;
-        }
-        
-        /* Botones de acción ejecutivos */
+        /* Botones de acción - Estilo azul sólido (Flat UI) */
         .stButton button {
-            background-color: #2563eb;
-            color: white;
-            border-radius: 6px;
-            font-weight: 600;
+            background-color: #3498db;
+            color: #ffffff !important;
+            border-radius: 4px;
+            font-weight: 500;
             border: none;
+            padding: 0.5rem 1.2rem;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             transition: background-color 0.2s;
         }
         .stButton button:hover {
-            background-color: #1d4ed8;
+            background-color: #2980b9;
+        }
+        
+        /* Tablas más limpias (Fondo blanco, encabezados grises suaves) */
+        thead tr th {
+            background-color: #f9fafb !important;
+            color: #6b7280 !important;
+            font-weight: 600 !important;
+            border-bottom: 2px solid #e5e7eb !important;
+        }
+        tbody tr:nth-child(even) {
+            background-color: #ffffff;
+        }
+        tbody tr:nth-child(odd) {
+            background-color: #f9fafb;
         }
     </style>
 """,
@@ -594,11 +596,12 @@ def enviar_correo_productor(
 # --- MENÚ DE NAVEGACIÓN PRINCIPAL DE LA SUPER APP ---
 with st.sidebar:
   if os.path.exists("logo.png"):
-    st.image("logo.png", width=360)
-  st.markdown("---")
-
+    st.image("logo.png", width=250)
+  st.markdown("<br>", unsafe_allow_html=True)
+  
+  st.markdown("### SECTIONS")
   modulo_principal = st.radio(
-      "Seleccionar Módulo:",
+      "", # Etiqueta vacía para estilo limpio
       [
           "🥛 Recepción y Calidad Coopagro",
           "🚛 Recepción Mastellone (Fasón)",
@@ -855,9 +858,9 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     df["AnioMes"] = df["Fecha"].dt.to_period("M")
 
     # Sub-navegación interna de Coopagro
-    st.sidebar.markdown("---")
+    st.sidebar.markdown("<br>### VISTAS", unsafe_allow_html=True)
     vista_coop = st.sidebar.radio(
-        "Sección Coopagro:",
+        "",
         [
             "Panel de Control General",
             "Gestión y Reportes por Tambo",
@@ -867,10 +870,10 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
     if vista_coop == "Panel de Control General":
       tipo_reporte_opcion = st.sidebar.radio(
-          "Seleccione el período:", ["Semanal", "Mensual"]
+          "Seleccione el período:", ["Semanal", "Mensual"], horizontal=True
       )
       st.markdown(
-          '<p class="main-header">📊 Panel Ejecutivo — Recepción y Calidad Coopagro</p>',
+          '<p class="main-header">Recepción y Calidad Coopagro</p>',
           unsafe_allow_html=True,
       )
 
@@ -882,7 +885,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
             .tolist()
         )
         ciclo_gen = (
-            st.sidebar.selectbox("Seleccione el Cierre de Semana:", ciclos)
+            st.selectbox("Seleccione el Cierre de Semana:", ciclos)
             if ciclos
             else ""
         )
@@ -891,7 +894,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       else:
         meses = sorted(df["AnioMes"].unique(), reverse=True)
         mes_gen = (
-            st.sidebar.selectbox(
+            st.selectbox(
                 "Seleccione el Mes:",
                 meses,
                 format_func=lambda p: f"{MESES_ES.get(p.month)} {p.year}",
@@ -911,25 +914,25 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         ratio_gp = grasa_p / prot_p if (prot_p and prot_p > 0) else pd.NA
 
         mc1, mc2, mc3, mc4, mc5 = st.columns(5)
-        mc1.metric("🥛 Litros Totales", f"{formato_miles(tot_litros)} L")
+        mc1.metric("Litros Totales", f"{formato_miles(tot_litros)}")
         mc2.metric(
-            "🌡️ Temp. Media", formato_temp(df_macro["Temperatura"].mean())
+            "Temp. Media", formato_temp(df_macro["Temperatura"].mean())
         )
         mc3.metric(
-            "🧈 Grasa Ponderada",
+            "Grasa Ponderada",
             f"{grasa_p:.2f}%".replace(".", ",") if pd.notna(grasa_p) else "S/D",
         )
         mc4.metric(
-            "🧀 Proteína Ponderada",
+            "Proteína Ponderada",
             f"{prot_p:.2f}%".replace(".", ",") if pd.notna(prot_p) else "S/D",
         )
         mc5.metric(
-            "⚖️ Ratio Grasa/Prot.",
+            "Ratio Grasa/Prot.",
             f"{ratio_gp:.2f}".replace(".", ",") if pd.notna(ratio_gp) else "S/D",
         )
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 🏆 Ranking de Tambos por Volumen")
+        st.markdown("##### Ranking de Tambos por Volumen")
         df_ranking = (
             df_macro.groupby(["Tambo", "Num_Tambo"], as_index=False)[
                 "Litros_Ticket"
@@ -959,11 +962,11 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
 
 # =========================================================================
-# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN) - Power BI Style
+# MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE (FASÓN) - Blindado & Litros Mes
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.markdown(
-      '<p class="main-header">📊 Tablero Ejecutivo — Fasón Mastellone</p>',
+      '<p class="main-header">Recepción y Producción Mastellone</p>',
       unsafe_allow_html=True,
   )
 
@@ -999,7 +1002,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # Lectura y procesamiento robusto de la solapa 'litros mes'
+      # Lectura robusta y garantizada de Datos MHSA.xlsx (solapa 'litros mes')
       df_mast_litros = cargar_datos_mastellone(URL_MASTELLONE)
 
       df_mast_litros_procesado = pd.DataFrame()
@@ -1043,7 +1046,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros[col_fecha], errors="coerce").fillna(1).astype(int)
                 df_mast_litros_procesado["Año"] = 2026
 
-    st.sidebar.markdown("### 🎛️ Filtros Mastellone")
+    st.sidebar.markdown("<br>### FILTROS", unsafe_allow_html=True)
     opciones_anio = ["Todos"] + (
         sorted(df_mastellone_prod["Año"].unique().tolist())
         if len(df_mastellone_prod) > 0
@@ -1052,8 +1055,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     opciones_mes = ["Todos"] + list(range(1, 13))
 
     with st.sidebar.container():
-      filtro_anio = st.selectbox("📅 Seleccionar Año", opciones_anio, key="m_anio_mastellone")
-      filtro_mes = st.selectbox("📆 Seleccionar Mes", opciones_mes, key="m_mes_mastellone")
+      filtro_anio = st.selectbox("Año", opciones_anio, key="m_anio_mastellone")
+      filtro_mes = st.selectbox("Mes", opciones_mes, key="m_mes_mastellone")
 
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
@@ -1139,25 +1142,26 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
         else 0
     )
 
-    st.markdown("### 📈 Indicadores Clave de Rendimiento (KPIs)")
+    st.markdown("##### Resumen Operativo")
     g1, g2, g3 = st.columns(3)
-    g1.metric("Litros Ingresados", formato_miles(total_litros_ingresados))
-    g2.metric("Litros Procesados", formato_miles(total_litros_proc))
+    g1.metric("LITROS INGRESADOS", formato_miles(total_litros_ingresados))
+    g2.metric("LITROS PROCESADOS", formato_miles(total_litros_proc))
     g3.metric(
-        "Total Producto Terminado", formato_miles(total_prod_consolidado)
-    )
-
-    g4, g5, _ = st.columns(3)
-    g4.metric(
-        "Ratio PT / Litros procesados", f"{ratio_ponderado:.2f}%".replace(".", ",")
-    )
-    g5.metric(
-        "Ratio PT / Litros ingresados",
-        f"{rendimiento_ingreso:.2f}%".replace(".", ","),
+        "PRODUCTO TERMINADO", formato_miles(total_prod_consolidado)
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 📋 Registro Detallado de Lotes (Muzzarella Mastellone)")
+    g4, g5, _ = st.columns(3)
+    g4.metric(
+        "RATIO PT / LITROS PROCESADOS", f"{ratio_ponderado:.2f}%".replace(".", ",")
+    )
+    g5.metric(
+        "RATIO PT / LITROS INGRESADOS",
+        f"{rendimiento_ingreso:.2f}%".replace(".", ","),
+    )
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("##### Detalle de Lotes (Muzzarella Mastellone)")
     if len(df_consolidado) > 0:
       df_display = df_consolidado.copy()
       df_display["Litros Procesados"] = df_display["Litros Procesados"].apply(
@@ -1179,11 +1183,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
 
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO (COOPAGRO) - Power BI Style
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO (COOPAGRO) - Estilo Limpio
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.markdown(
-      '<h1 class="main-header">📊 Tablero Ejecutivo — Producción Coopagro</h1>',
+      '<h1 class="main-header">Reporte de Producción Coopagro</h1>',
       unsafe_allow_html=True,
   )
 
@@ -1215,6 +1219,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
+      # Usamos URL_REMITOS (archivo oficial de recibo de Coopagro)
       raw_recibo = pd.read_excel(URL_REMITOS)
       df_recibo = pd.DataFrame()
       df_recibo['Fecha_Raw'] = raw_recibo.iloc[:, 1] 
@@ -1228,14 +1233,14 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
       recibo_mensual = df_recibo.groupby(['Año', 'Mes'])['Litros Ingresados'].sum().reset_index()
 
-    st.sidebar.markdown("### 🎛️ Filtros Producción Coopagro")
+    st.sidebar.markdown("<br>### FILTROS", unsafe_allow_html=True)
     
     opciones_anio = ["Todos"] + (sorted(df_prod_coop['Año'].unique().tolist()) if len(df_prod_coop) > 0 else [2026])
     opciones_mes = ["Todos"] + list(range(1, 13))
 
     with st.sidebar.container():
-        filtro_anio_coop = st.selectbox("📅 Seleccionar Año", opciones_anio, key="coop_prod_anio")
-        filtro_mes_coop = st.selectbox("📆 Seleccionar Mes", opciones_mes, key="coop_prod_mes")
+        filtro_anio_coop = st.selectbox("Año", opciones_anio, key="coop_prod_anio")
+        filtro_mes_coop = st.selectbox("Mes", opciones_mes, key="coop_prod_mes")
 
     df_filtrado = df_prod_coop.copy()
     if len(df_filtrado) > 0:
@@ -1281,18 +1286,19 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
     titulo_pdf = f"Reporte de producción Coopagro {mes_str} {anio_str}".strip()
 
-    st.markdown("### 📈 Indicadores Clave de Rendimiento — Coopagro")
+    st.markdown("##### Summary")
     g1, g2, g3 = st.columns(3)
-    g1.metric("Litros Ingresados", formato_miles(total_litros_ingresados))
-    g2.metric("Litros Procesados", formato_miles(total_litros_proc))
-    g3.metric("Total Producto Terminado", formato_miles(total_prod_consolidado))
+    g1.metric("LITROS INGRESADOS", formato_miles(total_litros_ingresados))
+    g2.metric("LITROS PROCESADOS", formato_miles(total_litros_proc))
+    g3.metric("TOTAL PRODUCTO TERMINADO", formato_miles(total_prod_consolidado))
     
-    g4, g5, _ = st.columns(3)
-    g4.metric("Ratio PT / Litros procesados", f"{ratio_ponderado:.2f}%".replace(".", ","))
-    g5.metric("Ratio PT / Litros ingresados", f"{rendimiento_ingreso:.2f}%".replace(".", ","))
-
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 📋 Registro Detallado de Lotes (Coopagro)")
+    g4, g5, _ = st.columns(3)
+    g4.metric("RATIO PT / LITROS PROCESADOS", f"{ratio_ponderado:.2f}%".replace(".", ","))
+    g5.metric("RATIO PT / LITROS INGRESADOS", f"{rendimiento_ingreso:.2f}%".replace(".", ","))
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("##### Lotes (Coopagro)")
     if len(df_consolidado) > 0:
         df_gerencia_display = df_consolidado.copy()
         df_gerencia_display['Litros Procesados'] = df_gerencia_display['Litros Procesados'].apply(formato_miles)
@@ -1364,9 +1370,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
             return pdf_output.encode('latin1')
         return pdf_output
 
-    st.markdown("---")
-    st.markdown("### 📥 Exportar Reporte Ejecutivo Coopagro")
-    
+    st.markdown("<br>", unsafe_allow_html=True)
     if len(df_consolidado) > 0:
         df_gerencia_raw_pdf = df_prod_coop.copy()
         if filtro_anio_coop != "Todos": df_gerencia_raw_pdf = df_gerencia_raw_pdf[df_gerencia_raw_pdf['Año'] == filtro_anio_coop]
@@ -1376,14 +1380,12 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         pdf_bytes = generar_pdf_coopagro(df_consolidado, titulo_pdf, total_litros_ingresados, rendimiento_ingreso, ratio_ponderado, df_gerencia_raw_pdf)
         
         st.download_button(
-            label="📄 Descargar Reporte en PDF",
+            label="Descargar Reporte PDF",
             data=pdf_bytes,
             file_name=f"{titulo_pdf.replace(' ', '_')}.pdf",
             mime="application/pdf",
-            use_container_width=True
+            use_container_width=False
         )
-    else:
-        st.warning("⚠️ No hay datos de Coopagro para los filtros seleccionados.")
             
   except Exception as e:
     st.error(f"Error al procesar el módulo de Producción Coopagro: {e}")
@@ -1395,7 +1397,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 # =========================================================================
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
   st.markdown(
-      '<p class="main-header">📊 Tablero Ejecutivo — Insumos y Costos</p>',
+      '<p class="main-header">Gestión de Insumos y Costos Variables</p>',
       unsafe_allow_html=True,
   )
   st.info("Módulo en desarrollo para control de stock y costos variables.")
