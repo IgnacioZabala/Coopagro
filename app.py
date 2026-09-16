@@ -10,6 +10,7 @@ from email.mime.text import MIMEText
 from fpdf import FPDF
 import pandas as pd
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 # =========================================================================
 # CONFIGURACIÓN GENERAL Y BLINDAJE DE ENTORNO
@@ -27,7 +28,8 @@ FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 FILE_ID_MASTELLONE = "1Zaqtkadw4Mhgcc8WuuFb1YlXvvWbMsM4"
 ID_PRODUCCION = "1wuIpzYmVuflX_pWoPt4Pz9olWF4LLKOf"
-# ID del nuevo Google Sheet unificado de Insumos (Forms 1 y 2)
+
+# ID del Google Sheet unificado de Insumos (Forms Stock e Ingresos)
 SHEET_INSUMOS_ID = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
 
 URL_REMITOS = f"https://drive.google.com/uc?export=download&id={FILE_ID_REMITOS}"
@@ -709,16 +711,29 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     st.error(f"Error en Coopagro: {e}")
 
 # =========================================================================
-# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS (Preparado para conectar Forms)
+# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS (CONECTADO A FORMS)
 # =========================================================================
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
-  st.header("📦 Gestión de Insumos y Costos Variables")
-  st.info("Módulo conectado a la base de Google Sheets unificada. Configurado para leer ingresos de mercadería y recuentos físicos.")
-  
-  # Estructura base lista para consumir los datos de los formularios de Forms
+  st.header("📦 Control de Stock, Costos Variables y Punto de Pedido")
   try:
-    conn = st.connection("gsheets", type="streamlit_gsheets.GSheetsConnection")
-    # Nota: Aquí leeremos las pestañas de respuestas de tus Google Forms próximamente
-    st.success("Conexión con el ecosistema de Insumos preparada.")
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    df_stock_real = conn.read(spreadsheet=URL_INSUMOS_SHEET, worksheet="Stock")
+    df_ingresos = conn.read(spreadsheet=URL_INSUMOS_SHEET, worksheet="Ingresos")
+
+    st.subheader("📋 Datos Recibidos de Formularios")
+    col_a, col_b = st.columns(2)
+    with col_a:
+      st.markdown("**Últimos Recuentos Físicos (Form Stock)**")
+      st.dataframe(df_stock_real.tail(5), use_container_width=True, hide_index=True)
+    with col_b:
+      st.markdown("**Últimos Ingresos de Mercadería (Form Ingresos)**")
+      st.dataframe(df_ingresos.tail(5), use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    st.subheader("⚙️ Simulador y Proyección de Consumo")
+    tinas_proyectadas = st.number_input("Cantidad de tinas (8000L) a planificar:", min_value=1, value=10, step=1)
+    st.info(f"Proyectando consumo para {tinas_proyectadas} tinas ({tinas_proyectadas * 8000:,} Litros). El motor cruzará stock físico, compras y costos unitarios automáticamente.")
+
   except Exception as e:
-    st.write("Cargando componentes de inventario...")
+    st.warning("Esperando registros en las pestañas 'Stock' e 'Ingresos' del Google Sheet unificado para activar los cálculos automáticos.")
+    st.code(str(e))
