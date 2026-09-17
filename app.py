@@ -483,7 +483,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 # =========================================================================
 # MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE
 # =========================================================================
-elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
+elif modulo_principal == "🚛 Recepción Mastellone y Fasón":
   st.header("Recepción y Producción Mastellone")
   try:
     with st.spinner("Sincronizando datos..."):
