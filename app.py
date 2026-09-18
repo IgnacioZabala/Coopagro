@@ -561,7 +561,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               if not df_lab.empty:
                   col_sample = df_lab.columns[0]
                   df_lab["Num_Tambo"] = df_lab[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-                  df_lab["Fecha"] = df_lab[col_sample].apply(extraer_fecha_texto)
+                  raw_fechas_lab = df_lab[col_sample].apply(extraer_fecha_texto)
+                  df_lab["Fecha"] = pd.to_datetime(raw_fechas_lab, dayfirst=True, errors="coerce").dt.normalize()
                   df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
                   
                   col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
@@ -597,7 +598,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               if not df_bacsomatic.empty:
                   col_sample_bac = next((c for c in df_bacsomatic.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bacsomatic.columns[5] if len(df_bacsomatic.columns) > 5 else df_bacsomatic.columns[0])
                   df_bacsomatic["Num_Tambo"] = df_bacsomatic[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-                  df_bacsomatic["Fecha"] = df_bacsomatic[col_sample_bac].apply(extraer_fecha_texto)
+                  raw_fechas_bac = df_bacsomatic[col_sample_bac].apply(extraer_fecha_texto)
+                  df_bacsomatic["Fecha"] = pd.to_datetime(raw_fechas_bac, dayfirst=True, errors="coerce").dt.normalize()
                   df_bacsomatic = df_bacsomatic.dropna(subset=["Fecha", "Num_Tambo"])
                   
                   col_ufc = next((c for c in df_bacsomatic.columns if "ufc" in c.lower()), None)
