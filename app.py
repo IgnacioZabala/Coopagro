@@ -483,10 +483,10 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 # =========================================================================
 # MÓDULO 2: RECEPCIÓN Y PRODUCCIÓN MASTELLONE
 # =========================================================================
-elif modulo_principal == "🚛 Recepción Mastellone y Fasón":
-  st.header("Recepción y Producción Mastellone")
+elif modulo_principal == "🚛 Recepción Mastellone (Fasón)": # Texto corregido para coincidir con el menú
+  st.header("🚛 Recepción y Producción Mastellone")
   try:
-    with st.spinner("Sincronizando datos..."):
+    with st.spinner("Sincronizando datos de producción..."):
       raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
       df_prod = pd.DataFrame()
       df_prod["Fecha"], df_prod["Lote"] = raw_prod.iloc[:, 0], raw_prod.iloc[:, 1]
@@ -494,25 +494,39 @@ elif modulo_principal == "🚛 Recepción Mastellone y Fasón":
       df_prod = df_prod.dropna(subset=["Fecha"])
       df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
-      for col in ["Litros Procesados", "Producto Terminado", "PNC"]: df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
-      if len(df_prod) > 0: df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod["Lote"].astype(str).apply(procesar_lote_mastellone))
-      else: df_prod["Producto"], df_prod["Grupo"] = [], []
+      for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
+          df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
+      
+      if len(df_prod) > 0: 
+          df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod["Lote"].astype(str).apply(procesar_lote_mastellone))
+      else: 
+          df_prod["Producto"], df_prod["Grupo"] = [], []
+      
       df_prod["Año"], df_prod["Mes"] = df_prod["Fecha"].dt.year, df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
+      # Lectura segura del archivo general de Mastellone (Evita el crash si el ID es incorrecto)
       df_mast_litros = cargar_datos_mastellone(URL_MASTELLONE)
       df_mast_litros_procesado = pd.DataFrame()
+      
       if not df_mast_litros.empty:
         cols_lower = [str(c).lower() for c in df_mast_litros.columns]
-        col_litros = next((df_mast_litros.columns[i] for i, c in enumerate(cols_lower) if any(x in c for x in ["litro", "volumen", "cantidad"])), df_mast_litros.columns[-1])
-        df_mast_litros_procesado["Litros"] = pd.to_numeric(df_mast_litros[col_litros], errors="coerce").fillna(0)
+        # Búsqueda segura de columnas
+        col_litros_idx = next((i for i, c in enumerate(cols_lower) if any(x in c for x in ["litro", "volumen", "cantidad"])), None)
         idx_mes = next((i for i, c in enumerate(cols_lower) if "mes" in c), None)
         idx_anio = next((i for i, c in enumerate(cols_lower) if "año" in c or "anio" in c), None)
+        
+        if col_litros_idx is not None:
+            df_mast_litros_procesado["Litros"] = pd.to_numeric(df_mast_litros.iloc[:, col_litros_idx], errors="coerce").fillna(0)
+        else:
+            df_mast_litros_procesado["Litros"] = 0
+            
         if idx_mes is not None and idx_anio is not None:
-            df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros[df_mast_litros.columns[idx_mes]], errors="coerce").fillna(1).astype(int)
-            df_mast_litros_procesado["Año"] = pd.to_numeric(df_mast_litros[df_mast_litros.columns[idx_anio]], errors="coerce").fillna(2026).astype(int)
+            df_mast_litros_procesado["Mes"] = pd.to_numeric(df_mast_litros.iloc[:, idx_mes], errors="coerce").fillna(1).astype(int)
+            df_mast_litros_procesado["Año"] = pd.to_numeric(df_mast_litros.iloc[:, idx_anio], errors="coerce").fillna(2026).astype(int)
 
-    st.sidebar.subheader("Filtros")
+    # Filtros
+    st.sidebar.subheader("Filtros Mastellone")
     opciones_anio = ["Todos"] + (sorted(df_mastellone_prod["Año"].unique().tolist()) if len(df_mastellone_prod) > 0 else [2026])
     opciones_mes = ["Todos"] + list(range(1, 13))
     filtro_anio = st.sidebar.selectbox("Año", opciones_anio, key="m_anio_mastellone")
@@ -528,10 +542,11 @@ elif modulo_principal == "🚛 Recepción Mastellone y Fasón":
       df_consolidado_raw["PT_Total"] = df_consolidado_raw["Producto Terminado"] + df_consolidado_raw["PNC"]
       df_consolidado_raw["Ratio Consolidado (%)"] = df_consolidado_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
       df_consolidado = df_consolidado_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio Consolidado (%)"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio Consolidado (%)": "Ratio de Conversión (%)"})
-    else: df_consolidado = pd.DataFrame(columns=["Fecha", "Lote", "Producto", "Litros Procesados", "Producto Terminado", "Ratio de Conversión (%)"])
+    else: 
+      df_consolidado = pd.DataFrame(columns=["Fecha", "Lote", "Producto", "Litros Procesados", "Producto Terminado", "Ratio de Conversión (%)"])
 
     total_litros_ingresados = 0.0
-    if not df_mast_litros_procesado.empty:
+    if not df_mast_litros_procesado.empty and "Litros" in df_mast_litros_procesado.columns:
       df_litros_f = df_mast_litros_procesado.copy()
       if filtro_anio != "Todos" and "Año" in df_litros_f.columns: df_litros_f = df_litros_f[df_litros_f["Año"] == int(float(filtro_anio))]
       if filtro_mes != "Todos" and "Mes" in df_litros_f.columns: df_litros_f = df_litros_f[df_litros_f["Mes"] == int(float(filtro_mes))]
@@ -543,18 +558,24 @@ elif modulo_principal == "🚛 Recepción Mastellone y Fasón":
     rendimiento_ingreso = (total_prod_consolidado / total_litros_ingresados * 100) if total_litros_ingresados > 0 else 0
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Litros Ingresados", formato_miles(total_litros_ingresados))
+    c1.metric("Litros Ingresados Brutos", formato_miles(total_litros_ingresados))
     c2.metric("Litros Procesados", formato_miles(total_litros_proc))
     c3.metric("Total Producto Terminado", formato_miles(total_prod_consolidado))
+    
     c4, c5, _ = st.columns(3)
     c4.metric("Ratio PT / Procesados", f"{ratio_ponderado:.2f}%")
     c5.metric("Ratio PT / Ingresados", f"{rendimiento_ingreso:.2f}%")
 
-    st.subheader("Registro de Lotes")
+    # --- ESPACIO RESERVADO PARA LABORATORIO Y BACSOMATIC MASTELLONE ---
+    st.subheader("Calidad de Leche Mastellone (Próximamente)")
+    st.info("Aquí cruzaremos los datos del Milkoscan y Bacsomatic para los 54 tambos de Mastellone una vez definida la fuente de los remitos diarios.")
+
+    st.subheader("Registro de Lotes Fasón")
     st.dataframe(df_consolidado, use_container_width=True, hide_index=True)
 
   except Exception as e:
-    st.error(f"Error en Mastellone: {e}")
+    st.error("Se produjo un error procesando los datos de Mastellone:")
+    st.code(traceback.format_exc())
 
 # =========================================================================
 # MÓDULO 3: PRODUCCIÓN COOPAGRO
