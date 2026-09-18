@@ -485,6 +485,9 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.header("🚛 Recepción, Calidad y Producción Mastellone")
+  import datetime
+  now = datetime.datetime.now()
+  
   try:
     with st.spinner("Sincronizando datos de Mastellone..."):
       # 1. Cargar Producción (RE-PRO-52)
@@ -496,13 +499,17 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Producto Terminado"] = raw_prod.iloc[:, 5]
       df_prod["PNC"] = raw_prod.iloc[:, 6]
       df_prod = df_prod.dropna(subset=["Fecha"])
+      
+      # Forzar día primero para evitar NaT
       df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
       
+      # Filtro robusto para lotes de Mastellone (buscando "840" en cualquier parte del string)
       if len(df_prod) > 0: 
-          df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod["Lote"].astype(str).apply(procesar_lote_mastellone))
+          df_prod["Producto"] = df_prod["Lote"].astype(str).apply(lambda x: "Muzzarella Export. Mastellone" if "840" in str(x) else "Otro")
+          df_prod["Grupo"] = df_prod["Lote"].astype(str).apply(lambda x: "Mastellone" if "840" in str(x) else "Coopagro")
       else: 
           df_prod["Producto"], df_prod["Grupo"] = [], []
       
@@ -515,10 +522,17 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_mhsa = pd.DataFrame()
       if "MHSA" in xls_remitos.sheet_names:
           df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name="MHSA")
+          
+          # Verificar si los encabezados están en la fila 1 en vez de la 0 por formato de Excel
+          if str(df_mhsa_raw.columns[0]).lower() == "nan" or "fecha" not in str(df_mhsa_raw.columns[0]).lower():
+              df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name="MHSA", skiprows=1)
+              
           df_mhsa = df_mhsa_raw.iloc[:, :8].copy()
           df_mhsa.columns = ["Fecha", "N_Remito", "Num_Tambo", "Tambo", "Litros_Ticket", "Litros_Planilla", "Diferencia", "Temperatura"]
           df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
-          df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], errors="coerce").dt.normalize()
+          
+          # FIX CRÍTICO: dayfirst=True para que 13/9/2026 se lea bien
+          df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
           df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
           df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa["Litros_Ticket"], errors="coerce").fillna(0)
           df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
@@ -526,16 +540,14 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_mhsa["orden_remito"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
       
       # 3. Cargar Laboratorio: MilkoScan y BacSomatic
-      # Utilizamos las funciones seguras para obtener los archivos raw
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
       if not df_mhsa.empty:
-          # --- Procesar MilkoScan (Grasa, Proteína, Crioscopia) ---
+          # --- Procesar MilkoScan ---
           if not df_lab_raw.empty:
               df_lab_m = df_lab_raw.copy()
-              col_sample = df_lab_m.columns[0] # Columna A: Sample Number
+              col_sample = df_lab_m.columns[0]
               
-              # Extraer Tambo y Fecha del string "T7346 13092026"
               df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
               df_lab_m["Fecha_Extraida"] = df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
               
@@ -564,10 +576,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                       df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
                   df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
 
-          # --- Procesar BacSomatic (UFC, SCC) ---
+          # --- Procesar BacSomatic ---
           if not df_bac_raw.empty:
               df_bac_m = df_bac_raw.copy()
-              # Buscar en Columna F (índice 5) o respaldarse en las palabras clave
               if len(df_bac_m.columns) > 5:
                   col_sample_bac = df_bac_m.columns[5]
               else:
@@ -600,20 +611,24 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
 
     # ==========================================
-    # FILTROS Y CÁLCULOS DINÁMICOS
+    # FILTROS POR DEFECTO DINÁMICOS
     # ==========================================
     st.sidebar.subheader("Filtros Mastellone")
-    # Consolidar todos los años disponibles entre Recepción y Producción
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
     anios_prod = df_mastellone_prod["Año"].dropna().unique().tolist() if not df_mastellone_prod.empty else []
     todos_anios = sorted(list(set(anios_mhsa + anios_prod)))
-    opciones_anio = ["Todos"] + (todos_anios if todos_anios else [2026])
-    opciones_mes = ["Todos"] + list(range(1, 13))
     
-    filtro_anio = st.sidebar.selectbox("Año", opciones_anio, key="m_anio_mastellone")
-    filtro_mes = st.sidebar.selectbox("Mes", opciones_mes, key="m_mes_mastellone")
+    opciones_anio = ["Todos"] + (todos_anios if todos_anios else [now.year])
+    default_anio_idx = opciones_anio.index(now.year) if now.year in opciones_anio else 0
+    filtro_anio = st.sidebar.selectbox("Año", opciones_anio, index=default_anio_idx, key="m_anio_mastellone")
 
-    # Filtro Producción
+    opciones_mes = ["Todos"] + list(range(1, 13))
+    default_mes_idx = opciones_mes.index(now.month) if now.month in opciones_mes else 0
+    filtro_mes = st.sidebar.selectbox("Mes", opciones_mes, index=default_mes_idx, key="m_mes_mastellone")
+
+    # ==========================================
+    # CÁLCULOS
+    # ==========================================
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
       if filtro_anio != "Todos": df_filtrado = df_filtrado[df_filtrado["Año"] == filtro_anio]
@@ -626,7 +641,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_consolidado_raw["Ratio Consolidado (%)"] = df_consolidado_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
       df_consolidado = df_consolidado_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio Consolidado (%)"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio Consolidado (%)": "Ratio de Conversión (%)"})
 
-    # Filtro Recepción MHSA para suma de Litros Ingresados
     df_mhsa_filtrado = df_mhsa.copy()
     if not df_mhsa_filtrado.empty:
         if filtro_anio != "Todos": df_mhsa_filtrado = df_mhsa_filtrado[df_mhsa_filtrado["Año"] == filtro_anio]
@@ -635,7 +649,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     else:
         total_litros_ingresados = 0.0
 
-    # Cálculos Finales KPIs
     total_litros_proc = df_filtrado["Litros Procesados"].sum() if len(df_filtrado) > 0 else 0
     total_prod_consolidado = df_consolidado["Producto Terminado"].sum() if len(df_consolidado) > 0 else 0
     ratio_ponderado = (total_prod_consolidado / total_litros_proc * 100) if total_litros_proc > 0 else 0
@@ -659,10 +672,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
         st.subheader("Recepción y Calidad de Tambos Mastellone")
         if not df_mhsa_filtrado.empty:
             df_mhsa_disp = df_mhsa_filtrado.copy()
+            df_mhsa_disp = df_mhsa_disp.sort_values(by=["Fecha", "Num_Tambo"])
             df_mhsa_disp["Fecha"] = df_mhsa_disp["Fecha"].dt.strftime("%d/%m/%Y")
             df_mhsa_disp["Litros_Ticket"] = df_mhsa_disp["Litros_Ticket"].apply(formato_miles)
             
-            # Formatear columnas de laboratorio si existen
             if "Grasa_Lab" in df_mhsa_disp: df_mhsa_disp["Grasa"] = df_mhsa_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Proteina_Lab" in df_mhsa_disp: df_mhsa_disp["Proteína"] = df_mhsa_disp["Proteina_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Crioscopia_Lab" in df_mhsa_disp: df_mhsa_disp["Crioscopía"] = df_mhsa_disp["Crioscopia_Lab"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
@@ -685,7 +698,14 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
     with tab2:
         st.subheader("Registro de Lotes Fasón")
-        st.dataframe(df_consolidado, use_container_width=True, hide_index=True)
+        if not df_consolidado.empty:
+            df_consolidado_disp = df_consolidado.copy()
+            df_consolidado_disp["Fecha"] = df_consolidado_disp["Fecha"].dt.strftime("%d/%m/%Y")
+            df_consolidado_disp["Litros Procesados"] = df_consolidado_disp["Litros Procesados"].apply(formato_miles)
+            df_consolidado_disp["Producto Terminado"] = df_consolidado_disp["Producto Terminado"].apply(formato_miles)
+            st.dataframe(df_consolidado_disp, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay producción de lotes Mastellone para el período seleccionado.")
 
   except Exception as e:
     st.error("Se produjo un error procesando los datos de Mastellone:")
