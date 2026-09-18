@@ -544,10 +544,13 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
           df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
       except Exception as e:
-          st.sidebar.warning(f"Error cargando MHSA: {e}")
           df_mhsa = pd.DataFrame()
 
-      # 3. Cargar y procesar MilkoScan (Grasa, Proteína, Crioscopía)
+      # Inicializar columnas de laboratorio en NaN para evitar errores si no cruzan
+      for col_lab in ["Grasa_Lab", "Proteina_Lab", "Crioscopia_Lab", "UFC_Val", "SCC_Val"]:
+          df_mhsa[col_lab] = float("nan")
+
+      # 3. Cargar y procesar MilkoScan
       if not df_mhsa.empty:
           try:
               df_lab_temp = pd.read_excel(URL_LAB, header=None, nrows=20)
@@ -575,11 +578,17 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                       for c in map_milko.values(): 
                           df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
                       df_milko_clean = df_milko_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
-                      df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
+                      
+                      # Actualizar por clave compuesta
+                      for idx, row in df_milko_clean.iterrows():
+                          mask = (df_mhsa["Num_Tambo"] == row["Num_Tambo"]) & (df_mhsa["Fecha"] == row["Fecha"])
+                          for col_target in map_milko.values():
+                              if col_target in row and pd.notna(row[col_target]):
+                                  df_mhsa.loc[mask, col_target] = row[col_target]
           except Exception as e:
-              st.sidebar.warning(f"Error en MilkoScan: {e}")
+              pass
 
-          # 4. Cargar y procesar BacSomatic (UFC, SCC)
+          # 4. Cargar y procesar BacSomatic
           try:
               df_bac_temp = pd.read_excel(URL_BACSOMATIC, header=None, nrows=20)
               header_row_bac = encontrar_fila_encabezado(df_bac_temp, ["id usuario", "ufc", "scc", "sample"])
@@ -604,9 +613,14 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                       for c in map_bac.values(): 
                           df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
                       df_bac_clean = df_bac_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
-                      df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
+                      
+                      for idx, row in df_bac_clean.iterrows():
+                          mask = (df_mhsa["Num_Tambo"] == row["Num_Tambo"]) & (df_mhsa["Fecha"] == row["Fecha"])
+                          for col_target in map_bac.values():
+                              if col_target in row and pd.notna(row[col_target]):
+                                  df_mhsa.loc[mask, col_target] = row[col_target]
           except Exception as e:
-              st.sidebar.warning(f"Error en BacSomatic: {e}")
+              pass
 
     # ==========================================
     # FILTROS POR DEFECTO (MES Y AÑO ACTUAL)
@@ -675,11 +689,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_mhsa_disp["Litros_Ticket"] = df_mhsa_disp["Litros_Ticket"].apply(formato_miles)
             df_mhsa_disp["Temperatura"] = df_mhsa_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
-            df_mhsa_disp["Grasa"] = df_mhsa_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-") if "Grasa_Lab" in df_mhsa_disp.columns else "-"
-            df_mhsa_disp["Proteína"] = df_mhsa_disp["Proteina_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-") if "Proteina_Lab" in df_mhsa_disp.columns else "-"
-            df_mhsa_disp["Crioscopía"] = df_mhsa_disp["Crioscopia_Lab"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-") if "Crioscopia_Lab" in df_mhsa_disp.columns else "-"
-            df_mhsa_disp["UFC"] = df_mhsa_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-") if "UFC_Val" in df_mhsa_disp.columns else "-"
-            df_mhsa_disp["SCC"] = df_mhsa_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-") if "SCC_Val" in df_mhsa_disp.columns else "-"
+            df_mhsa_disp["Grasa"] = df_mhsa_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            df_mhsa_disp["Proteína"] = df_mhsa_disp["Proteina_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            df_mhsa_disp["Crioscopía"] = df_mhsa_disp["Crioscopia_Lab"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
+            df_mhsa_disp["UFC"] = df_mhsa_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            df_mhsa_disp["SCC"] = df_mhsa_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
             df_mhsa_disp = df_mhsa_disp.rename(columns={"Fecha_Str": "Fecha", "Litros_Ticket": "Litros"})
             st.dataframe(df_mhsa_disp[["Fecha", "Num_Tambo", "Tambo", "Litros", "Temperatura", "Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]], use_container_width=True, hide_index=True)
