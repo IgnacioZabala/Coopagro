@@ -491,7 +491,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   try:
     with st.spinner("Sincronizando datos de Mastellone..."):
       # 1. Cargar Producción (RE-PRO-52)
-      raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
+      # FIX: skiprows=5 asegura que la fila 6 sea el encabezado sin comerse el primer dato
+      raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=5)
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
       df_prod["Lote"] = raw_prod.iloc[:, 1]
@@ -502,8 +503,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       
       df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
+      
+      # FIX: Reemplazar comas por puntos en los kgs/litros para evitar NaN
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
-          df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
+          df_prod[col] = pd.to_numeric(df_prod[col].astype(str).str.replace(",", "."), errors="coerce").fillna(0)
       
       if len(df_prod) > 0: 
           df_prod["Producto"] = df_prod["Lote"].astype(str).apply(lambda x: "Muzzarella Export. Mastellone" if "840" in str(x) else "Otro")
@@ -519,40 +522,42 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_mhsa = pd.DataFrame()
       try:
           xls_remitos = pd.ExcelFile(URL_REMITOS)
-          sheet_mhsa = next((s for s in xls_remitos.sheet_names if "mhsa" in s.lower()), None)
-          if not sheet_mhsa and len(xls_remitos.sheet_names) > 1:
-              sheet_mhsa = xls_remitos.sheet_names[1]
-          elif not sheet_mhsa:
-              sheet_mhsa = xls_remitos.sheet_names[0]
+          # FIX: Coincidencia exacta de la solapa MHSA
+          sheet_mhsa = next((s for s in xls_remitos.sheet_names if s.strip().upper() == "MHSA"), None)
+          
+          if not sheet_mhsa:
+              st.sidebar.warning("No se encontró la solapa exacta 'MHSA'.")
+          else:
+              df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name=sheet_mhsa, dtype=str)
+              
+              df_mhsa = pd.DataFrame()
+              
+              cols_lower = [str(c).lower() for c in df_mhsa_raw.columns]
+              idx_fecha = next((i for i, c in enumerate(cols_lower) if "fecha" in c), 0)
+              idx_num_tambo = next((i for i, c in enumerate(cols_lower) if "tambo" in c and ("n" in c or "num" in c)), 2 if len(cols_lower) > 2 else 0)
+              idx_tambo = next((i for i, c in enumerate(cols_lower) if "tambo" in c and "n" not in c and "num" not in c), 3 if len(cols_lower) > 3 else 0)
+              idx_litros = next((i for i, c in enumerate(cols_lower) if "litro" in c), 4 if len(cols_lower) > 4 else 0)
+              idx_temp = next((i for i, c in enumerate(cols_lower) if "temperatura" in c or "temp" in c), min(7, len(cols_lower)-1))
 
-          df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name=sheet_mhsa, dtype=str)
-          
-          df_mhsa = pd.DataFrame()
-          
-          # Búsqueda dinámica y segura de columnas por nombre para evitar errores de índice
-          cols_lower = [str(c).lower() for c in df_mhsa_raw.columns]
-          
-          idx_fecha = next((i for i, c in enumerate(cols_lower) if "fecha" in c), 0)
-          idx_num_tambo = next((i for i, c in enumerate(cols_lower) if "tambo" in c and ("n" in c or "num" in c)), 2 if len(cols_lower) > 2 else 0)
-          idx_tambo = next((i for i, c in enumerate(cols_lower) if "tambo" in c and "n" not in c and "num" not in c), 3 if len(cols_lower) > 3 else 0)
-          idx_litros = next((i for i, c in enumerate(cols_lower) if "litro" in c), 4 if len(cols_lower) > 4 else 0)
-          idx_temp = next((i for i, c in enumerate(cols_lower) if "temperatura" in c or "temp" in c), min(7, len(cols_lower)-1))
-
-          df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, idx_fecha]
-          df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, idx_num_tambo]
-          df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, idx_tambo]
-          df_mhsa["Litros_Ticket"] = df_mhsa_raw.iloc[:, idx_litros]
-          df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, idx_temp]
-          
-          df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
-          df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
-          df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
-          df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa["Litros_Ticket"], errors="coerce").fillna(0)
-          df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa["Temperatura"], errors="coerce")
-          
-          df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
-          df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
-          df_mhsa["orden_remito"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
+              df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, idx_fecha]
+              df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, idx_num_tambo]
+              df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, idx_tambo]
+              df_mhsa["Litros_Ticket"] = df_mhsa_raw.iloc[:, idx_litros]
+              df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, idx_temp]
+              
+              df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
+              
+              # FIX: Eliminación de format="mixed"
+              df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], dayfirst=True, errors="coerce").dt.normalize()
+              df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
+              
+              # FIX: Reemplazar comas por puntos en MHSA
+              df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa["Litros_Ticket"].astype(str).str.replace(",", "."), errors="coerce").fillna(0)
+              df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa["Temperatura"].astype(str).str.replace(",", "."), errors="coerce")
+              
+              df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
+              df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
+              df_mhsa["orden_remito"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
       except Exception as e:
           st.sidebar.warning(f"Aviso de carga MHSA: {e}")
           df_mhsa = pd.DataFrame()
@@ -729,7 +734,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   except Exception as e:
     st.error("Se produjo un error procesando los datos de Mastellone:")
     st.code(traceback.format_exc())
-      
 # =========================================================================
 # MÓDULO 3: PRODUCCIÓN COOPAGRO
 # =========================================================================
