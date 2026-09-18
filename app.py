@@ -537,7 +537,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_mhsa["Fecha"] = pd.to_datetime(df_mhsa_raw.iloc[:, idx_fecha], dayfirst=True, errors="coerce").dt.normalize()
           df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, idx_num_tambo].apply(limpiar_tambo)
           df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, idx_tambo]
-          df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa_raw.iloc[:, idx_litros].astype(str).str.replace(",", "."), errors="coerce").fillna(0)
+          df_mhsa["Litros"] = pd.to_numeric(df_mhsa_raw.iloc[:, idx_litros].astype(str).str.replace(",", "."), errors="coerce").fillna(0)
           df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa_raw.iloc[:, idx_temp].astype(str).str.replace(",", "."), errors="coerce")
           
           df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
@@ -546,6 +546,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       except Exception as e:
           df_mhsa = pd.DataFrame()
 
+      # Inicializar columnas de laboratorio
       for col_lab in ["Grasa_Lab", "Proteina_Lab", "Crioscopia_Lab", "UFC_Val", "SCC_Val"]:
           df_mhsa[col_lab] = float("nan")
 
@@ -655,7 +656,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     if not df_mhsa_filtrado.empty:
         if filtro_anio != "Todos": df_mhsa_filtrado = df_mhsa_filtrado[df_mhsa_filtrado["Año"] == filtro_anio]
         if filtro_mes != "Todos": df_mhsa_filtrado = df_mhsa_filtrado[df_mhsa_filtrado["Mes"] == filtro_mes]
-        total_litros_ingresados = df_mhsa_filtrado["Litros_Ticket"].sum()
+        total_litros_ingresados = df_mhsa_filtrado["Litros"].sum()
     else:
         total_litros_ingresados = 0.0
 
@@ -683,18 +684,17 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
         if not df_mhsa_filtrado.empty:
             df_mhsa_disp = df_mhsa_filtrado.copy()
             df_mhsa_disp = df_mhsa_disp.sort_values(by=["Fecha", "Num_Tambo"])
-            df_mhsa_disp["Fecha_Str"] = df_mhsa_disp["Fecha"].dt.strftime("%d/%m/%Y")
-            df_mhsa_disp["Litros_Ticket"] = df_mhsa_disp["Litros_Ticket"].apply(formato_miles)
+            df_mhsa_disp["Fecha"] = df_mhsa_disp["Fecha"].dt.strftime("%d/%m/%Y")
+            df_mhsa_disp["Litros"] = df_mhsa_disp["Litros"].apply(formato_miles)
             df_mhsa_disp["Temperatura"] = df_mhsa_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
-            # Formateo estricto a string para evitar conflictos en Arrow/Streamlit
+            # Formateo seguro a string para evitar conflictos en Arrow/Streamlit
             df_mhsa_disp["Grasa"] = df_mhsa_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-").astype(str)
             df_mhsa_disp["Proteína"] = df_mhsa_disp["Proteina_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-").astype(str)
             df_mhsa_disp["Crioscopía"] = df_mhsa_disp["Crioscopia_Lab"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-").astype(str)
             df_mhsa_disp["UFC"] = df_mhsa_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-").astype(str)
             df_mhsa_disp["SCC"] = df_mhsa_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-").astype(str)
             
-            df_mhsa_disp = df_mhsa_disp.rename(columns={"Fecha_Str": "Fecha", "Litros_Ticket": "Litros"})
             st.dataframe(df_mhsa_disp[["Fecha", "Num_Tambo", "Tambo", "Litros", "Temperatura", "Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]], use_container_width=True, hide_index=True)
         else:
             st.info("No hay registros de recepción para el período seleccionado.")
