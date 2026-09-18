@@ -515,13 +515,21 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Mes"] = df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # 2. Cargar Recepción Diaria (Hoja MHSA de OD-PRO-03)
+      # 2. Cargar Recepción Diaria (Búsqueda inteligente de la hoja MHSA)
+      df_mhsa = pd.DataFrame()
       try:
-          # Leemos la hoja MHSA directamente asegurando el tipo de dato
-          df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name="MHSA", dtype={"N° de tambo": str})
+          xls_remitos = pd.ExcelFile(URL_REMITOS)
+          # Buscar hoja que contenga "mhsa" o usar la segunda hoja por defecto
+          sheet_mhsa = next((s for s in xls_remitos.sheet_names if "mhsa" in s.lower()), None)
+          if not sheet_mhsa and len(xls_remitos.sheet_names) > 1:
+              sheet_mhsa = xls_remitos.sheet_names[1]
+          elif not sheet_mhsa:
+              sheet_mhsa = xls_remitos.sheet_names[0]
+
+          df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name=sheet_mhsa, dtype=str)
           
           df_mhsa = pd.DataFrame()
-          # Las columnas según la captura: Fecha (A), N° de tambo (C), Tambo (D), Litros (ticket) (E), Temperatura (H)
+          # Columnas: Fecha (A), N° de tambo (C), Tambo (D), Litros (ticket) (E), Temperatura (H)
           df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, 0]
           df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2]
           df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
@@ -538,7 +546,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
           df_mhsa["orden_remito"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
       except Exception as e:
-          st.sidebar.warning(f"No se pudo cargar la hoja MHSA: {e}")
+          st.sidebar.warning(f"Aviso de carga MHSA: {e}")
           df_mhsa = pd.DataFrame()
       
       # 3. Cargar Laboratorio y cruzar con Recepción
@@ -613,7 +621,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
 
     # ==========================================
-    # FILTROS POR DEFECTO DINÁMICOS
+    # FILTROS POR DEFECTO (MES Y AÑO ACTUAL)
     # ==========================================
     st.sidebar.subheader("Filtros Mastellone")
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
@@ -629,7 +637,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     filtro_mes = st.sidebar.selectbox("Mes", opciones_mes, index=default_mes_idx, key="m_mes_mastellone")
 
     # ==========================================
-    # CÁLCULOS
+    # CÁLCULOS Y MÉTRICAS
     # ==========================================
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
@@ -697,7 +705,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
             st.dataframe(df_mhsa_disp[cols_to_show], use_container_width=True, hide_index=True)
         else:
-            st.info("No hay registros de recepción en la hoja 'MHSA' para el período seleccionado.")
+            st.info("No hay registros de recepción para el período seleccionado.")
 
     with tab2:
         st.subheader("Registro de Lotes Fasón")
@@ -713,6 +721,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   except Exception as e:
     st.error("Se produjo un error procesando los datos de Mastellone:")
     st.code(traceback.format_exc())
+      
 # =========================================================================
 # MÓDULO 3: PRODUCCIÓN COOPAGRO
 # =========================================================================
