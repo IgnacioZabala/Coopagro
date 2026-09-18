@@ -516,7 +516,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Mes"] = df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # 2. Cargar Recepción Diaria
+      # 2. Cargar Recepción Diaria (MHSA)
       df_mhsa = pd.DataFrame()
       try:
           xls_remitos = pd.ExcelFile(URL_MASTELLONE)
@@ -552,23 +552,20 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               
               df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
               df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
-              df_mhsa["orden_remito"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
       except Exception as e:
           st.sidebar.warning(f"Aviso de carga MHSA: {e}")
           df_mhsa = pd.DataFrame()
       
-      # 3. Cargar Laboratorio y cruzar con Recepción
+      # 3. Cargar Laboratorio y cruzar estrictamente por Fecha y Tambo
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
       if not df_mhsa.empty:
-          # --- Procesar MilkoScan ---
+          # --- Procesar MilkoScan (Cruce por Fecha y Tambo) ---
           if not df_lab_raw.empty:
               df_lab_m = df_lab_raw.copy()
               col_sample = df_lab_m.columns[0]
               
               df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-              
-              # FIX: Forzar conversión directa a datetime para evitar choques de tipos en fechas
               raw_fechas_ext = df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
               df_lab_m["Fecha_Extraida"] = pd.to_datetime(raw_fechas_ext, errors="coerce").dt.normalize()
               
@@ -579,8 +576,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               else:
                   df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"]
               
-              df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"]).sort_values(by=["Num_Tambo", "Fecha"])
-              df_lab_m["orden_remito"] = df_lab_m.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
+              df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
               
               map_cols = {}
               col_fat = next((c for c in df_lab_m.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
@@ -592,12 +588,14 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
               
               if map_cols:
-                  df_milko_clean = df_lab_m[["Num_Tambo", "Fecha", "orden_remito"] + list(map_cols.keys())].rename(columns=map_cols)
+                  df_milko_clean = df_lab_m[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
                   for c in map_cols.values(): 
                       df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-                  df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
+                  # Agrupación estricta por Fecha y Tambo
+                  df_milko_clean = df_milko_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
+                  df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
 
-          # --- Procesar BacSomatic ---
+          # --- Procesar BacSomatic (Cruce por Fecha y Tambo) ---
           if not df_bac_raw.empty:
               df_bac_m = df_bac_raw.copy()
               if len(df_bac_m.columns) > 5:
@@ -606,8 +604,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
               
               df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-              
-              # FIX: Forzar conversión directa a datetime
               raw_fechas_bac = df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
               df_bac_m["Fecha_Extraida"] = pd.to_datetime(raw_fechas_bac, errors="coerce").dt.normalize()
               
@@ -618,8 +614,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               else:
                   df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"]
 
-              df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"]).sort_values(by=["Num_Tambo", "Fecha"])
-              df_bac_m["orden_remito"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
+              df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
               
               map_cols_bac = {}
               col_ufc = next((c for c in df_bac_m.columns if "ufc" in c.lower()), None)
@@ -629,10 +624,12 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               if col_scc: map_cols_bac[col_scc] = "SCC_Val"
               
               if map_cols_bac:
-                  df_bac_clean = df_bac_m[["Num_Tambo", "Fecha", "orden_remito"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
+                  df_bac_clean = df_bac_m[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
                   for c in map_cols_bac.values(): 
                       df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-                  df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
+                  # Agrupación estricta por Fecha y Tambo
+                  df_bac_clean = df_bac_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
+                  df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
 
     # ==========================================
     # FILTROS POR DEFECTO (MES Y AÑO ACTUAL)
