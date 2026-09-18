@@ -556,14 +556,17 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           st.sidebar.warning(f"Aviso de carga MHSA: {e}")
           df_mhsa = pd.DataFrame()
       
-      # 3. Cargar y procesar MilkoScan directamente (Columna A)
+      # 3. Cargar y procesar MilkoScan de forma dinámica y robusta
       if not df_mhsa.empty:
           try:
-              df_milko = pd.read_excel(URL_LAB, header=6)
+              df_milko_temp = pd.read_excel(URL_LAB, header=None, nrows=20)
+              header_row_m = encontrar_fila_encabezado(df_milko_temp, ["sample", "fat", "protein", "grasa"])
+              df_milko = pd.read_excel(URL_LAB, header=header_row_m)
               df_milko.columns = df_milko.columns.astype(str).str.strip()
-              col_sample_m = df_milko.columns[0]
               
-              df_milko["Num_Tambo"] = df_milko[col_sample_m].astype(str).str.split().str[0].apply(limpiar_tambo)
+              col_sample_m = next((c for c in df_milko.columns if any(x in c.lower() for x in ["sample", "number", "tambo", "muestra"])), df_milko.columns[0])
+              
+              df_milko["Num_Tambo"] = df_milko[col_sample_m].astype(str).apply(lambda x: limpiar_tambo(str(x).split()[0]) if pd.notna(x) else "")
               df_milko["Fecha"] = df_milko[col_sample_m].apply(extraer_fecha_texto)
               df_milko = df_milko.dropna(subset=["Fecha", "Num_Tambo"])
               
@@ -585,13 +588,16 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           except Exception as e:
               st.sidebar.warning(f"Error procesando MilkoScan: {e}")
 
-          # 4. Cargar y procesar BacSomatic directamente (Columna F)
+          # 4. Cargar y procesar BacSomatic de forma dinámica y robusta
           try:
-              df_bac = pd.read_excel(URL_BACSOMATIC, header=6)
+              df_bac_temp = pd.read_excel(URL_BACSOMATIC, header=None, nrows=20)
+              header_row_b = encontrar_fila_encabezado(df_bac_temp, ["id usuario", "ufc", "scc", "sample", "usuario"])
+              df_bac = pd.read_excel(URL_BACSOMATIC, header=header_row_b)
               df_bac.columns = df_bac.columns.astype(str).str.strip()
-              col_sample_b = df_bac.columns[5] if len(df_bac.columns) > 5 else df_bac.columns[0]
               
-              df_bac["Num_Tambo"] = df_bac[col_sample_b].astype(str).str.split().str[0].apply(limpiar_tambo)
+              col_sample_b = next((c for c in df_bac.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo", "usuario"])), df_bac.columns[5] if len(df_bac.columns) > 5 else df_bac.columns[0])
+              
+              df_bac["Num_Tambo"] = df_bac[col_sample_b].astype(str).apply(lambda x: limpiar_tambo(str(x).split()[0]) if pd.notna(x) else "")
               df_bac["Fecha"] = df_bac[col_sample_b].apply(extraer_fecha_texto)
               df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
               
