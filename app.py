@@ -489,7 +489,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   now = datetime.datetime.now()
   
   try:
-    with st.spinner("Sincronizando datos de Mastellone y Laboratorio..."):
+    with st.spinner("Sincronizando datos de Mastellone y Laboratorios..."):
       # 1. Cargar Producción (RE-PRO-52)
       raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=5)
       df_prod = pd.DataFrame()
@@ -528,7 +528,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
               
               df_mhsa = pd.DataFrame()
-              
               cols_lower = [str(c).lower() for c in df_mhsa_raw.columns]
               idx_fecha = next((i for i, c in enumerate(cols_lower) if "fecha" in c), 0)
               idx_num_tambo = next((i for i, c in enumerate(cols_lower) if "tambo" in c and ("n" in c or "num" in c)), 2 if len(cols_lower) > 2 else 0)
@@ -543,77 +542,75 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, idx_temp]
               
               df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
-              
               df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], dayfirst=True, errors="coerce").dt.normalize()
               df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
               
               df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa["Litros_Ticket"].astype(str).str.replace(",", "."), errors="coerce").fillna(0)
               df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa["Temperatura"].astype(str).str.replace(",", "."), errors="coerce")
-              
               df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
               df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
       except Exception as e:
           st.sidebar.warning(f"Aviso de carga MHSA: {e}")
           df_mhsa = pd.DataFrame()
       
-      # 3. Cargar y procesar MilkoScan de forma dinámica y robusta
+      # 3. Cargar y procesar MilkoScan directamente desde URL_LAB
       if not df_mhsa.empty:
           try:
-              df_milko_temp = pd.read_excel(URL_LAB, header=None, nrows=20)
-              header_row_m = encontrar_fila_encabezado(df_milko_temp, ["sample", "fat", "protein", "grasa"])
-              df_milko = pd.read_excel(URL_LAB, header=header_row_m)
-              df_milko.columns = df_milko.columns.astype(str).str.strip()
+              df_lab_temp = pd.read_excel(URL_LAB, header=None, nrows=20)
+              header_row_lab = encontrar_fila_encabezado(df_lab_temp, ["sample", "fat", "protein", "grasa"])
+              df_lab = pd.read_excel(URL_LAB, header=header_row_lab)
+              df_lab.columns = df_lab.columns.astype(str).str.strip()
               
-              col_sample_m = next((c for c in df_milko.columns if any(x in c.lower() for x in ["sample", "number", "tambo", "muestra"])), df_milko.columns[0])
-              
-              df_milko["Num_Tambo"] = df_milko[col_sample_m].astype(str).apply(lambda x: limpiar_tambo(str(x).split()[0]) if pd.notna(x) else "")
-              df_milko["Fecha"] = df_milko[col_sample_m].apply(extraer_fecha_texto)
-              df_milko = df_milko.dropna(subset=["Fecha", "Num_Tambo"])
-              
-              col_fat = next((c for c in df_milko.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
-              col_prot = next((c for c in df_milko.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
-              col_fp = next((c for c in df_milko.columns if "fp" in c.lower() or "crios" in c.lower()), None)
-              
-              map_milko = {}
-              if col_fat: map_milko[col_fat] = "Grasa_Lab"
-              if col_prot: map_milko[col_prot] = "Proteina_Lab"
-              if col_fp: map_milko[col_fp] = "Crioscopia_Lab"
-              
-              if map_milko:
-                  df_milko_clean = df_milko[["Num_Tambo", "Fecha"] + list(map_milko.keys())].rename(columns=map_milko)
-                  for c in map_milko.values(): 
-                      df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-                  df_milko_clean = df_milko_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
-                  df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
+              if not df_lab.empty:
+                  col_sample = df_lab.columns[0]
+                  df_lab["Num_Tambo"] = df_lab[col_sample].astype(str).apply(lambda x: limpiar_tambo(str(x).split()[0]) if pd.notna(x) else "")
+                  df_lab["Fecha"] = df_lab[col_sample].apply(extraer_fecha_texto)
+                  df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
+                  
+                  col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
+                  col_prot = next((c for c in df_lab.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
+                  col_fp = next((c for c in df_lab.columns if "fp" in c.lower() or "crios" in c.lower()), None)
+                  
+                  map_milko = {}
+                  if col_fat: map_milko[col_fat] = "Grasa_Lab"
+                  if col_prot: map_milko[col_prot] = "Proteina_Lab"
+                  if col_fp: map_milko[col_fp] = "Crioscopia_Lab"
+                  
+                  if map_milko:
+                      df_milko_clean = df_lab[["Num_Tambo", "Fecha"] + list(map_milko.keys())].rename(columns=map_milko)
+                      for c in map_milko.values(): 
+                          df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
+                      df_milko_clean = df_milko_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
+                      df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
           except Exception as e:
               st.sidebar.warning(f"Error procesando MilkoScan: {e}")
 
-          # 4. Cargar y procesar BacSomatic de forma dinámica y robusta
+          # 4. Cargar y procesar BacSomatic directamente desde URL_BACSOMATIC
           try:
               df_bac_temp = pd.read_excel(URL_BACSOMATIC, header=None, nrows=20)
-              header_row_b = encontrar_fila_encabezado(df_bac_temp, ["id usuario", "ufc", "scc", "sample", "usuario"])
-              df_bac = pd.read_excel(URL_BACSOMATIC, header=header_row_b)
-              df_bac.columns = df_bac.columns.astype(str).str.strip()
+              header_row_bac = encontrar_fila_encabezado(df_bac_temp, ["id usuario", "ufc", "scc", "sample"])
+              df_bacsomatic = pd.read_excel(URL_BACSOMATIC, header=header_row_bac)
+              df_bacsomatic.columns = df_bacsomatic.columns.astype(str).str.strip()
               
-              col_sample_b = next((c for c in df_bac.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo", "usuario"])), df_bac.columns[5] if len(df_bac.columns) > 5 else df_bac.columns[0])
-              
-              df_bac["Num_Tambo"] = df_bac[col_sample_b].astype(str).apply(lambda x: limpiar_tambo(str(x).split()[0]) if pd.notna(x) else "")
-              df_bac["Fecha"] = df_bac[col_sample_b].apply(extraer_fecha_texto)
-              df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
-              
-              col_ufc = next((c for c in df_bac.columns if "ufc" in c.lower()), None)
-              col_scc = next((c for c in df_bac.columns if any(x in c.lower() for x in ["scc", "celulas", "somáticas"])), None)
-              
-              map_bac = {}
-              if col_ufc: map_bac[col_ufc] = "UFC_Val"
-              if col_scc: map_bac[col_scc] = "SCC_Val"
-              
-              if map_bac:
-                  df_bac_clean = df_bac[["Num_Tambo", "Fecha"] + list(map_bac.keys())].rename(columns=map_bac)
-                  for c in map_bac.values(): 
-                      df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-                  df_bac_clean = df_bac_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
-                  df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
+              if not df_bacsomatic.empty:
+                  col_sample_bac = next((c for c in df_bacsomatic.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bacsomatic.columns[5] if len(df_bacsomatic.columns) > 5 else df_bacsomatic.columns[0])
+                  df_bacsomatic["Num_Tambo"] = df_bacsomatic[col_sample_bac].astype(str).apply(lambda x: limpiar_tambo(str(x).split()[0]) if pd.notna(x) else "")
+                  df_bacsomatic["Fecha"] = df_bacsomatic[col_sample_bac].apply(extraer_fecha_texto)
+                  df_bacsomatic = df_bacsomatic.dropna(subset=["Fecha", "Num_Tambo"])
+                  
+                  col_ufc = next((c for c in df_bacsomatic.columns if "ufc" in c.lower()), None)
+                  col_scc = next((c for c in df_bacsomatic.columns if any(x in c.lower() for x in ["scc", "celulas", "somáticas"])), None)
+                  
+                  map_bac = {}
+                  if col_ufc: map_bac[col_ufc] = "UFC_Val"
+                  if col_scc: map_bac[col_scc] = "SCC_Val"
+                  
+                  if map_bac:
+                      df_bac_clean = df_bacsomatic[["Num_Tambo", "Fecha"] + list(map_bac.keys())].rename(columns=map_bac)
+                      for c in map_bac.values(): 
+                          df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
+                      df_bac_clean = df_bac_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
+                      df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
           except Exception as e:
               st.sidebar.warning(f"Error procesando BacSomatic: {e}")
 
