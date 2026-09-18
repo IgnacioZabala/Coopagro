@@ -491,7 +491,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   try:
     with st.spinner("Sincronizando datos de Mastellone..."):
       # 1. Cargar Producción (RE-PRO-52)
-      # FIX: skiprows=5 asegura que la fila 6 sea el encabezado sin comerse el primer dato
       raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=5)
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
@@ -504,7 +503,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
       
-      # FIX: Reemplazar comas por puntos en los kgs/litros para evitar NaN
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col].astype(str).str.replace(",", "."), errors="coerce").fillna(0)
       
@@ -518,17 +516,16 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Mes"] = df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # 2. Cargar Recepción Diaria (Búsqueda inteligente y segura de la hoja MHSA)
+      # 2. Cargar Recepción Diaria (Usando URL_MASTELLONE para apuntar al archivo correcto)
       df_mhsa = pd.DataFrame()
       try:
-          xls_remitos = pd.ExcelFile(URL_REMITOS)
-          # FIX: Coincidencia exacta de la solapa MHSA
+          xls_remitos = pd.ExcelFile(URL_MASTELLONE)
           sheet_mhsa = next((s for s in xls_remitos.sheet_names if s.strip().upper() == "MHSA"), None)
           
           if not sheet_mhsa:
               st.sidebar.warning("No se encontró la solapa exacta 'MHSA'.")
           else:
-              df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name=sheet_mhsa, dtype=str)
+              df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
               
               df_mhsa = pd.DataFrame()
               
@@ -547,11 +544,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               
               df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
               
-              # FIX: Eliminación de format="mixed"
               df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], dayfirst=True, errors="coerce").dt.normalize()
               df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
               
-              # FIX: Reemplazar comas por puntos en MHSA
               df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa["Litros_Ticket"].astype(str).str.replace(",", "."), errors="coerce").fillna(0)
               df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa["Temperatura"].astype(str).str.replace(",", "."), errors="coerce")
               
@@ -734,6 +729,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   except Exception as e:
     st.error("Se produjo un error procesando los datos de Mastellone:")
     st.code(traceback.format_exc())
+      
 # =========================================================================
 # MÓDULO 3: PRODUCCIÓN COOPAGRO
 # =========================================================================
