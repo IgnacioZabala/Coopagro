@@ -500,13 +500,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["PNC"] = raw_prod.iloc[:, 6]
       df_prod = df_prod.dropna(subset=["Fecha"])
       
-      # Forzar día primero para evitar NaT
       df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
       
-      # Filtro robusto para lotes de Mastellone (buscando "840" en cualquier parte del string)
       if len(df_prod) > 0: 
           df_prod["Producto"] = df_prod["Lote"].astype(str).apply(lambda x: "Muzzarella Export. Mastellone" if "840" in str(x) else "Otro")
           df_prod["Grupo"] = df_prod["Lote"].astype(str).apply(lambda x: "Mastellone" if "840" in str(x) else "Coopagro")
@@ -518,28 +516,32 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
       # 2. Cargar Recepción Diaria (Hoja MHSA de OD-PRO-03)
-      xls_remitos = pd.ExcelFile(URL_REMITOS)
-      df_mhsa = pd.DataFrame()
-      if "MHSA" in xls_remitos.sheet_names:
-          df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name="MHSA")
+      try:
+          # Leemos la hoja MHSA directamente asegurando el tipo de dato
+          df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name="MHSA", dtype={"N° de tambo": str})
           
-          # Verificar si los encabezados están en la fila 1 en vez de la 0 por formato de Excel
-          if str(df_mhsa_raw.columns[0]).lower() == "nan" or "fecha" not in str(df_mhsa_raw.columns[0]).lower():
-              df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name="MHSA", skiprows=1)
-              
-          df_mhsa = df_mhsa_raw.iloc[:, :8].copy()
-          df_mhsa.columns = ["Fecha", "N_Remito", "Num_Tambo", "Tambo", "Litros_Ticket", "Litros_Planilla", "Diferencia", "Temperatura"]
+          df_mhsa = pd.DataFrame()
+          # Las columnas según la captura: Fecha (A), N° de tambo (C), Tambo (D), Litros (ticket) (E), Temperatura (H)
+          df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, 0]
+          df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2]
+          df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
+          df_mhsa["Litros_Ticket"] = df_mhsa_raw.iloc[:, 4]
+          df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, 7]
+          
           df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
-          
-          # FIX CRÍTICO: dayfirst=True para que 13/9/2026 se lea bien
           df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
           df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
           df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa["Litros_Ticket"], errors="coerce").fillna(0)
+          df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa["Temperatura"], errors="coerce")
+          
           df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
           df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
           df_mhsa["orden_remito"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
+      except Exception as e:
+          st.sidebar.warning(f"No se pudo cargar la hoja MHSA: {e}")
+          df_mhsa = pd.DataFrame()
       
-      # 3. Cargar Laboratorio: MilkoScan y BacSomatic
+      # 3. Cargar Laboratorio y cruzar con Recepción
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
       if not df_mhsa.empty:
@@ -675,6 +677,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_mhsa_disp = df_mhsa_disp.sort_values(by=["Fecha", "Num_Tambo"])
             df_mhsa_disp["Fecha"] = df_mhsa_disp["Fecha"].dt.strftime("%d/%m/%Y")
             df_mhsa_disp["Litros_Ticket"] = df_mhsa_disp["Litros_Ticket"].apply(formato_miles)
+            df_mhsa_disp["Temperatura"] = df_mhsa_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
             if "Grasa_Lab" in df_mhsa_disp: df_mhsa_disp["Grasa"] = df_mhsa_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Proteina_Lab" in df_mhsa_disp: df_mhsa_disp["Proteína"] = df_mhsa_disp["Proteina_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
