@@ -546,28 +546,24 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       except Exception as e:
           df_mhsa = pd.DataFrame()
 
-      # Inicializar columnas de laboratorio
+      # Inicializar columnas de laboratorio en NaN
       for col_lab in ["Grasa_Lab", "Proteina_Lab", "Crioscopia_Lab", "UFC_Val", "SCC_Val"]:
           df_mhsa[col_lab] = float("nan")
 
       # 3. Cargar y procesar MilkoScan
       if not df_mhsa.empty:
           try:
-              df_lab_temp = pd.read_excel(URL_LAB, header=None, nrows=20)
-              header_row = encontrar_fila_encabezado(df_lab_temp, ["sample", "fat", "protein", "grasa"])
-              df_lab = pd.read_excel(URL_LAB, header=header_row)
+              df_lab = pd.read_excel(URL_LAB, header=6)
               df_lab.columns = df_lab.columns.astype(str).str.strip()
-              
-              if not df_lab.empty:
+              if not df_lab.empty and "Analyzed" in df_lab.columns:
                   col_sample = df_lab.columns[0]
                   df_lab["Num_Tambo"] = df_lab[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-                  raw_fechas_lab = df_lab[col_sample].apply(extraer_fecha_texto)
-                  df_lab["Fecha"] = pd.to_datetime(raw_fechas_lab, dayfirst=True, errors="coerce").dt.normalize()
+                  df_lab["Fecha"] = pd.to_datetime(df_lab["Analyzed"], errors="coerce").dt.normalize()
                   df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
                   
                   col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
                   col_prot = next((c for c in df_lab.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
-                  col_fp = next((c for c in df_lab.columns if "fp" in c.lower() or "crios" in c.lower()), None)
+                  col_fp = next((c for c in df_lab.columns if c.lower() == "fp" or "crios" in c.lower()), None)
                   
                   map_milko = {}
                   if col_fat: map_milko[col_fat] = "Grasa_Lab"
@@ -590,20 +586,16 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
           # 4. Cargar y procesar BacSomatic
           try:
-              df_bac_temp = pd.read_excel(URL_BACSOMATIC, header=None, nrows=20)
-              header_row_bac = encontrar_fila_encabezado(df_bac_temp, ["id usuario", "ufc", "scc", "sample"])
-              df_bacsomatic = pd.read_excel(URL_BACSOMATIC, header=header_row_bac)
+              df_bacsomatic = pd.read_excel(URL_BACSOMATIC, header=6)
               df_bacsomatic.columns = df_bacsomatic.columns.astype(str).str.strip()
-              
-              if not df_bacsomatic.empty:
-                  col_sample_bac = next((c for c in df_bacsomatic.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bacsomatic.columns[5] if len(df_bacsomatic.columns) > 5 else df_bacsomatic.columns[0])
+              if not df_bacsomatic.empty and "Fecha" in df_bacsomatic.columns:
+                  col_sample_bac = next((c for c in df_bacsomatic.columns if "id usuario" in c.lower() or "sample" in c.lower()), df_bacsomatic.columns[5] if len(df_bacsomatic.columns) > 5 else df_bacsomatic.columns[0])
                   df_bacsomatic["Num_Tambo"] = df_bacsomatic[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-                  raw_fechas_bac = df_bacsomatic[col_sample_bac].apply(extraer_fecha_texto)
-                  df_bacsomatic["Fecha"] = pd.to_datetime(raw_fechas_bac, dayfirst=True, errors="coerce").dt.normalize()
-                  df_bacsomatic = df_bacsomatic.dropna(subset=["Fecha", "Num_Tambo"])
+                  df_bacsomatic["Fecha"] = pd.to_datetime(df_bacsomatic["Fecha"], errors="coerce").dt.normalize()
+                  df_bacsomatic = df_bacsomatic.dropna(subset=["Fecha"])
                   
                   col_ufc = next((c for c in df_bacsomatic.columns if "ufc" in c.lower()), None)
-                  col_scc = next((c for c in df_bacsomatic.columns if any(x in c.lower() for x in ["scc", "celulas", "somáticas"])), None)
+                  col_scc = next((c for c in df_bacsomatic.columns if any(x in c.lower() for x in ["scc", "células", "somáticas"])), None)
                   
                   map_bac = {}
                   if col_ufc: map_bac[col_ufc] = "UFC_Val"
