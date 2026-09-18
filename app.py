@@ -515,11 +515,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Mes"] = df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # 2. Cargar Recepción Diaria (Búsqueda inteligente de la hoja MHSA)
+      # 2. Cargar Recepción Diaria (Búsqueda inteligente y segura de la hoja MHSA)
       df_mhsa = pd.DataFrame()
       try:
           xls_remitos = pd.ExcelFile(URL_REMITOS)
-          # Buscar hoja que contenga "mhsa" o usar la segunda hoja por defecto
           sheet_mhsa = next((s for s in xls_remitos.sheet_names if "mhsa" in s.lower()), None)
           if not sheet_mhsa and len(xls_remitos.sheet_names) > 1:
               sheet_mhsa = xls_remitos.sheet_names[1]
@@ -529,12 +528,21 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_mhsa_raw = pd.read_excel(URL_REMITOS, sheet_name=sheet_mhsa, dtype=str)
           
           df_mhsa = pd.DataFrame()
-          # Columnas: Fecha (A), N° de tambo (C), Tambo (D), Litros (ticket) (E), Temperatura (H)
-          df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, 0]
-          df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2]
-          df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
-          df_mhsa["Litros_Ticket"] = df_mhsa_raw.iloc[:, 4]
-          df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, 7]
+          
+          # Búsqueda dinámica y segura de columnas por nombre para evitar errores de índice
+          cols_lower = [str(c).lower() for c in df_mhsa_raw.columns]
+          
+          idx_fecha = next((i for i, c in enumerate(cols_lower) if "fecha" in c), 0)
+          idx_num_tambo = next((i for i, c in enumerate(cols_lower) if "tambo" in c and ("n" in c or "num" in c)), 2 if len(cols_lower) > 2 else 0)
+          idx_tambo = next((i for i, c in enumerate(cols_lower) if "tambo" in c and "n" not in c and "num" not in c), 3 if len(cols_lower) > 3 else 0)
+          idx_litros = next((i for i, c in enumerate(cols_lower) if "litro" in c), 4 if len(cols_lower) > 4 else 0)
+          idx_temp = next((i for i, c in enumerate(cols_lower) if "temperatura" in c or "temp" in c), min(7, len(cols_lower)-1))
+
+          df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, idx_fecha]
+          df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, idx_num_tambo]
+          df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, idx_tambo]
+          df_mhsa["Litros_Ticket"] = df_mhsa_raw.iloc[:, idx_litros]
+          df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, idx_temp]
           
           df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
           df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
