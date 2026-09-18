@@ -560,21 +560,16 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
       if not df_mhsa.empty:
-          # --- Procesar MilkoScan (Cruce por Fecha y Tambo) ---
+          # --- Procesar MilkoScan (Columna A con formato 'TXXXX DDMMAAAA') ---
           if not df_lab_raw.empty:
               df_lab_m = df_lab_raw.copy()
-              col_sample = df_lab_m.columns[0]
+              col_sample = df_lab_m.columns[0] # Columna A
               
               df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-              raw_fechas_ext = df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
-              df_lab_m["Fecha_Extraida"] = pd.to_datetime(raw_fechas_ext, errors="coerce").dt.normalize()
               
-              col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
-              if col_date:
-                  df_lab_m["Fecha_Analisis"] = pd.to_datetime(df_lab_m[col_date], errors="coerce").dt.normalize()
-                  df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(df_lab_m["Fecha_Analisis"])
-              else:
-                  df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"]
+              # Extracción y conversión estricta de la fecha compacta (ej. 13092026 -> 13/09/2026)
+              texto_fechas = df_lab_m[col_sample].astype(str).str.split().str[-1]
+              df_lab_m["Fecha"] = pd.to_datetime(texto_fechas, format="%d%m%Y", errors="coerce").dt.normalize()
               
               df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
               
@@ -591,28 +586,22 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   df_milko_clean = df_lab_m[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
                   for c in map_cols.values(): 
                       df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-                  # Agrupación estricta por Fecha y Tambo
                   df_milko_clean = df_milko_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
                   df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
 
-          # --- Procesar BacSomatic (Cruce por Fecha y Tambo) ---
+          # --- Procesar BacSomatic (Columna F / ID usuario definido con formato 'TXXXX DDMMAAAA') ---
           if not df_bac_raw.empty:
               df_bac_m = df_bac_raw.copy()
               if len(df_bac_m.columns) > 5:
-                  col_sample_bac = df_bac_m.columns[5]
+                  col_sample_bac = df_bac_m.columns[5] # Columna F
               else:
                   col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
               
               df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-              raw_fechas_bac = df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
-              df_bac_m["Fecha_Extraida"] = pd.to_datetime(raw_fechas_bac, errors="coerce").dt.normalize()
               
-              col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
-              if col_date_bac:
-                  df_bac_m["Fecha_Analisis"] = pd.to_datetime(df_bac_m[col_date_bac], errors="coerce").dt.normalize()
-                  df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(df_bac_m["Fecha_Analisis"])
-              else:
-                  df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"]
+              # Extracción y conversión estricta de la fecha compacta
+              texto_fechas_bac = df_bac_m[col_sample_bac].astype(str).str.split().str[-1]
+              df_bac_m["Fecha"] = pd.to_datetime(texto_fechas_bac, format="%d%m%Y", errors="coerce").dt.normalize()
 
               df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
               
@@ -627,7 +616,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   df_bac_clean = df_bac_m[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
                   for c in map_cols_bac.values(): 
                       df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-                  # Agrupación estricta por Fecha y Tambo
                   df_bac_clean = df_bac_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
                   df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
 
