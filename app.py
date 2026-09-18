@@ -560,16 +560,14 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
       if not df_mhsa.empty:
-          # --- Procesar MilkoScan (Columna A con formato 'TXXXX DDMMAAAA') ---
+          # --- Procesar MilkoScan (Columna A) ---
           if not df_lab_raw.empty:
               df_lab_m = df_lab_raw.copy()
               col_sample = df_lab_m.columns[0] # Columna A
               
               df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-              
-              # Extracción y conversión estricta de la fecha compacta (ej. 13092026 -> 13/09/2026)
-              texto_fechas = df_lab_m[col_sample].astype(str).str.split().str[-1]
-              df_lab_m["Fecha"] = pd.to_datetime(texto_fechas, format="%d%m%Y", errors="coerce").dt.normalize()
+              # FIX: Usar extraer_fecha_texto para ignorar horas o caracteres extra
+              df_lab_m["Fecha"] = df_lab_m[col_sample].apply(extraer_fecha_texto)
               
               df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
               
@@ -589,7 +587,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   df_milko_clean = df_milko_clean.groupby(["Num_Tambo", "Fecha"], as_index=False).mean(numeric_only=True)
                   df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
 
-          # --- Procesar BacSomatic (Columna F / ID usuario definido con formato 'TXXXX DDMMAAAA') ---
+          # --- Procesar BacSomatic (Columna F) ---
           if not df_bac_raw.empty:
               df_bac_m = df_bac_raw.copy()
               if len(df_bac_m.columns) > 5:
@@ -598,10 +596,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
               
               df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-              
-              # Extracción y conversión estricta de la fecha compacta
-              texto_fechas_bac = df_bac_m[col_sample_bac].astype(str).str.split().str[-1]
-              df_bac_m["Fecha"] = pd.to_datetime(texto_fechas_bac, format="%d%m%Y", errors="coerce").dt.normalize()
+              # FIX: Usar extraer_fecha_texto
+              df_bac_m["Fecha"] = df_bac_m[col_sample_bac].apply(extraer_fecha_texto)
 
               df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
               
@@ -686,18 +682,24 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_mhsa_disp["Litros_Ticket"] = df_mhsa_disp["Litros_Ticket"].apply(formato_miles)
             df_mhsa_disp["Temperatura"] = df_mhsa_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
-            if "Grasa_Lab" in df_mhsa_disp: df_mhsa_disp["Grasa"] = df_mhsa_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Proteina_Lab" in df_mhsa_disp: df_mhsa_disp["Proteína"] = df_mhsa_disp["Proteina_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Crioscopia_Lab" in df_mhsa_disp: df_mhsa_disp["Crioscopía"] = df_mhsa_disp["Crioscopia_Lab"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
-            if "UFC_Val" in df_mhsa_disp: df_mhsa_disp["UFC"] = df_mhsa_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
-            if "SCC_Val" in df_mhsa_disp: df_mhsa_disp["SCC"] = df_mhsa_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            # Mapeo seguro de columnas de laboratorio hacia la visualización
+            if "Grasa_Lab" in df_mhsa_disp.columns: 
+                df_mhsa_disp["Grasa"] = df_mhsa_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            if "Proteina_Lab" in df_mhsa_disp.columns: 
+                df_mhsa_disp["Proteína"] = df_mhsa_disp["Proteina_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            if "Crioscopia_Lab" in df_mhsa_disp.columns: 
+                df_mhsa_disp["Crioscopía"] = df_mhsa_disp["Crioscopia_Lab"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
+            if "UFC_Val" in df_mhsa_disp.columns: 
+                df_mhsa_disp["UFC"] = df_mhsa_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            if "SCC_Val" in df_mhsa_disp.columns: 
+                df_mhsa_disp["SCC"] = df_mhsa_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
             cols_to_show = ["Fecha", "Num_Tambo", "Tambo", "Litros_Ticket", "Temperatura"]
-            if "Grasa" in df_mhsa_disp: cols_to_show.append("Grasa")
-            if "Proteína" in df_mhsa_disp: cols_to_show.append("Proteína")
-            if "Crioscopía" in df_mhsa_disp: cols_to_show.append("Crioscopía")
-            if "UFC" in df_mhsa_disp: cols_to_show.append("UFC")
-            if "SCC" in df_mhsa_disp: cols_to_show.append("SCC")
+            if "Grasa" in df_mhsa_disp.columns: cols_to_show.append("Grasa")
+            if "Proteína" in df_mhsa_disp.columns: cols_to_show.append("Proteína")
+            if "Crioscopía" in df_mhsa_disp.columns: cols_to_show.append("Crioscopía")
+            if "UFC" in df_mhsa_disp.columns: cols_to_show.append("UFC")
+            if "SCC" in df_mhsa_disp.columns: cols_to_show.append("SCC")
             
             df_mhsa_disp = df_mhsa_disp.rename(columns={"Litros_Ticket": "Litros"})
             cols_to_show[cols_to_show.index("Litros_Ticket")] = "Litros"
