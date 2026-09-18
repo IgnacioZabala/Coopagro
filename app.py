@@ -516,7 +516,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Mes"] = df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # 2. Cargar Recepción Diaria (Usando URL_MASTELLONE para apuntar al archivo correcto)
+      # 2. Cargar Recepción Diaria
       df_mhsa = pd.DataFrame()
       try:
           xls_remitos = pd.ExcelFile(URL_MASTELLONE)
@@ -567,12 +567,15 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               col_sample = df_lab_m.columns[0]
               
               df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-              df_lab_m["Fecha_Extraida"] = df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
+              
+              # FIX: Forzar conversión directa a datetime para evitar choques de tipos en fechas
+              raw_fechas_ext = df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
+              df_lab_m["Fecha_Extraida"] = pd.to_datetime(raw_fechas_ext, errors="coerce").dt.normalize()
               
               col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
               if col_date:
                   df_lab_m["Fecha_Analisis"] = pd.to_datetime(df_lab_m[col_date], errors="coerce").dt.normalize()
-                  df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].combine_first(df_lab_m["Fecha_Analisis"])
+                  df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(df_lab_m["Fecha_Analisis"])
               else:
                   df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"]
               
@@ -603,12 +606,15 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
               
               df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-              df_bac_m["Fecha_Extraida"] = df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
+              
+              # FIX: Forzar conversión directa a datetime
+              raw_fechas_bac = df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
+              df_bac_m["Fecha_Extraida"] = pd.to_datetime(raw_fechas_bac, errors="coerce").dt.normalize()
               
               col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
               if col_date_bac:
                   df_bac_m["Fecha_Analisis"] = pd.to_datetime(df_bac_m[col_date_bac], errors="coerce").dt.normalize()
-                  df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].combine_first(df_bac_m["Fecha_Analisis"])
+                  df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(df_bac_m["Fecha_Analisis"])
               else:
                   df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"]
 
