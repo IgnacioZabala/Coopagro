@@ -500,7 +500,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["PNC"] = raw_prod.iloc[:, 6]
       df_prod = df_prod.dropna(subset=["Fecha"])
       
-      df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
+      # Forzamos formato de fecha robusto
+      df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], format="mixed", dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
@@ -545,28 +546,26 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       except Exception as e:
           st.sidebar.warning(f"Error al cargar la hoja 2 (MHSA Diario): {e}")
       
-      # 3. Cargar Litros Mes (Hoja 3 de FILE_ID_MASTELLONE)
+      # 3. Cargar Litros Mes (Hoja 3: MHSA Litros Mes)
       df_mhsa_litros = pd.DataFrame()
       try:
-          sheet_litros = xls_mastellone.sheet_names[2] if len(xls_mastellone.sheet_names) > 2 else None
+          sheet_litros = next((s for s in xls_mastellone.sheet_names if "litros" in s.lower() and "mes" in s.lower()), None)
+          if not sheet_litros and len(xls_mastellone.sheet_names) > 2:
+              sheet_litros = xls_mastellone.sheet_names[2]
+              
           if sheet_litros:
               df_litros_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_litros)
-              cols_lower = [str(c).lower() for c in df_litros_raw.columns]
               
-              col_litros = next((df_litros_raw.columns[i] for i, c in enumerate(cols_lower) if any(x in c for x in ["litro", "volumen", "cantidad"])), df_litros_raw.columns[-1])
-              df_mhsa_litros["Litros"] = pd.to_numeric(df_litros_raw[col_litros], errors="coerce").fillna(0)
-              
-              idx_mes = next((i for i, c in enumerate(cols_lower) if "mes" in c), None)
-              idx_anio = next((i for i, c in enumerate(cols_lower) if "año" in c or "anio" in c), None)
-              
-              if idx_mes is not None and idx_anio is not None:
-                  df_mhsa_litros["Mes"] = pd.to_numeric(df_litros_raw[df_litros_raw.columns[idx_mes]], errors="coerce").fillna(1).astype(int)
-                  df_mhsa_litros["Año"] = pd.to_numeric(df_litros_raw[df_litros_raw.columns[idx_anio]], errors="coerce").fillna(2026).astype(int)
+              # Lógica adaptable: Si pusiste Año en A (3 columnas o más) o si quedó como en tu foto (2 columnas)
+              if len(df_litros_raw.columns) >= 3:
+                  df_mhsa_litros["Año"] = pd.to_numeric(df_litros_raw.iloc[:, 0], errors="coerce").fillna(2026).astype(int)
+                  df_mhsa_litros["Mes"] = pd.to_numeric(df_litros_raw.iloc[:, 1], errors="coerce").fillna(0).astype(int)
+                  df_mhsa_litros["Litros"] = pd.to_numeric(df_litros_raw.iloc[:, 2], errors="coerce").fillna(0)
               else:
-                  col_fecha = next((df_litros_raw.columns[i] for i, c in enumerate(cols_lower) if "fecha" in c or "periodo" in c), df_litros_raw.columns[0])
-                  fechas_parsed = pd.to_datetime(df_litros_raw[col_fecha], errors="coerce", dayfirst=True)
-                  df_mhsa_litros["Año"] = fechas_parsed.dt.year.fillna(now.year).astype(int)
-                  df_mhsa_litros["Mes"] = fechas_parsed.dt.month.fillna(now.month).astype(int)
+                  # Fallback por si la estructura es como en la captura de pantalla (A=Mes, B=Litros)
+                  df_mhsa_litros["Año"] = 2026
+                  df_mhsa_litros["Mes"] = pd.to_numeric(df_litros_raw.iloc[:, 0], errors="coerce").fillna(0).astype(int)
+                  df_mhsa_litros["Litros"] = pd.to_numeric(df_litros_raw.iloc[:, 1], errors="coerce").fillna(0)
       except Exception as e:
           st.sidebar.warning(f"Error al cargar la hoja 3 (Litros Mes): {e}")
 
@@ -585,7 +584,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
               if col_date:
                   df_lab_m["Fecha_Analisis"] = pd.to_datetime(df_lab_m[col_date], errors="coerce").dt.normalize()
-                  # Solución: Usar fillna garantizando tipo datetime
                   df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(df_lab_m["Fecha_Analisis"])
               else:
                   df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"]
@@ -622,7 +620,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
               if col_date_bac:
                   df_bac_m["Fecha_Analisis"] = pd.to_datetime(df_bac_m[col_date_bac], errors="coerce").dt.normalize()
-                  # Solución: Usar fillna garantizando tipo datetime
                   df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(df_bac_m["Fecha_Analisis"])
               else:
                   df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"]
@@ -649,7 +646,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.sidebar.subheader("Filtros Mastellone")
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
     anios_prod = df_mastellone_prod["Año"].dropna().unique().tolist() if not df_mastellone_prod.empty else []
-    todos_anios = sorted(list(set(anios_mhsa + anios_prod)))
+    todos_anios = sorted(list(set(anios_mhsa + anios_prod + df_mhsa_litros["Año"].tolist() if not df_mhsa_litros.empty else [])))
     
     opciones_anio = ["Todos"] + (todos_anios if todos_anios else [now.year])
     default_anio_idx = opciones_anio.index(now.year) if now.year in opciones_anio else 0
@@ -662,6 +659,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     # ==========================================
     # CÁLCULOS Y MÉTRICAS
     # ==========================================
+    # Filtro de Producción
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
       if filtro_anio != "Todos": df_filtrado = df_filtrado[df_filtrado["Año"] == filtro_anio]
@@ -674,10 +672,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_consolidado_raw["Ratio Consolidado (%)"] = df_consolidado_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
       df_consolidado = df_consolidado_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio Consolidado (%)"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio Consolidado (%)": "Ratio de Conversión (%)"})
 
+    # Filtro de Litros Ingresados Brutos (Hoja 3)
     df_mhsa_litros_f = df_mhsa_litros.copy()
     if not df_mhsa_litros_f.empty:
-        if filtro_anio != "Todos": df_mhsa_litros_f = df_mhsa_litros_f[df_mhsa_litros_f["Año"] == filtro_anio]
-        if filtro_mes != "Todos": df_mhsa_litros_f = df_mhsa_litros_f[df_mhsa_litros_f["Mes"] == filtro_mes]
+        if filtro_anio != "Todos": df_mhsa_litros_f = df_mhsa_litros_f[df_mhsa_litros_f["Año"] == int(filtro_anio)]
+        if filtro_mes != "Todos": df_mhsa_litros_f = df_mhsa_litros_f[df_mhsa_litros_f["Mes"] == int(filtro_mes)]
         total_litros_ingresados = df_mhsa_litros_f["Litros"].sum()
     else:
         total_litros_ingresados = 0.0
