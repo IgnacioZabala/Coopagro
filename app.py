@@ -156,7 +156,7 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   pdf.add_page()
   
   if os.path.exists("logo.png"):
-    pdf.image("logo.png", x=82, y=8, w=50)
+    pdf.image("logo.png", x=82, y=8, w=45)
     pdf.set_y(50)
   else:
     pdf.set_y(20)
@@ -719,14 +719,15 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (ACTUALIZADO)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
   try:
-    with st.spinner("Sincronizando datos de producción Coopagro..."):
+    with st.spinner("Sincronizando datos de producción y recepción Coopagro..."):
       import time
       
+      # 1. Cargar Producción Coopagro
       url_prod_limpia = f"{URL_PRODUCCION}&t={int(time.time())}"
       xls_prod = pd.ExcelFile(url_prod_limpia)
       hoja_prod = "2026" if "2026" in xls_prod.sheet_names else xls_prod.sheet_names[-1]
@@ -770,28 +771,53 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       df_prod['Mes'] = df_prod['Fecha'].dt.month
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
+      # 2. Cargar Recepción (Litros Ingresados) para vincular con Coopagro
+      url_recibo_limpia = f"{URL_REMITOS}&t={int(time.time())}"
+      raw_recibo = pd.read_excel(url_recibo_limpia)
+      df_recibo = pd.DataFrame()
+      df_recibo['Fecha'] = pd.to_datetime(raw_recibo.iloc[:, 1], format="mixed", dayfirst=True, errors='coerce')
+      df_recibo['Litros Ingresados'] = pd.to_numeric(raw_recibo.iloc[:, 5], errors='coerce').fillna(0)
+      df_recibo = df_recibo.dropna(subset=['Fecha'])
+      df_recibo['Año'] = df_recibo['Fecha'].dt.year
+      df_recibo['Mes'] = df_recibo['Fecha'].dt.month
+
     st.sidebar.subheader("Filtros Producción Coopagro")
     anios_p = sorted(df_prod_coop['Año'].unique().tolist()) if not df_prod_coop.empty else [2026]
     op_anio_p = ["Todos"] + anios_p
     f_anio_p = st.sidebar.selectbox("Año Producción", op_anio_p, key="p_anio_coop")
     f_mes_p = st.sidebar.selectbox("Mes Producción", ["Todos"] + list(range(1, 13)), key="p_mes_coop")
 
+    # Filtrar Producción
     df_p_filtered = df_prod_coop.copy()
     if f_anio_p != "Todos":
         df_p_filtered = df_p_filtered[df_p_filtered['Año'] == f_anio_p]
     if f_mes_p != "Todos":
         df_p_filtered = df_p_filtered[df_p_filtered['Mes'] == f_mes_p]
 
+    # Filtrar Recepción (Litros Ingresados)
+    df_r_filtered = df_recibo.copy()
+    if f_anio_p != "Todos":
+        df_r_filtered = df_r_filtered[df_r_filtered['Año'] == f_anio_p]
+    if f_mes_p != "Todos":
+        df_r_filtered = df_r_filtered[df_r_filtered['Mes'] == f_mes_p]
+
+    tot_ingresados_c = df_r_filtered['Litros Ingresados'].sum() if not df_r_filtered.empty else 0
     tot_proc_c = df_p_filtered['Litros Procesados'].sum() if not df_p_filtered.empty else 0
     tot_pt_c = df_p_filtered['Producto Terminado'].sum() if not df_p_filtered.empty else 0
     tot_pnc_c = df_p_filtered['PNC'].sum() if not df_p_filtered.empty else 0
-    ratio_c = (tot_pt_c / tot_proc_c * 100) if tot_proc_c > 0 else 0
+    
+    ratio_proc_c = (tot_pt_c / tot_proc_c * 100) if tot_proc_c > 0 else 0
+    ratio_ing_c = (tot_pt_c / tot_ingresados_c * 100) if tot_ingresados_c > 0 else 0
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Litros Procesados", formato_miles(tot_proc_c))
-    col2.metric("Producto Terminado", formato_miles(tot_pt_c))
-    col3.metric("PNC (No Conforme)", formato_miles(tot_pnc_c))
-    col4.metric("Rendimiento (%)", f"{ratio_c:.2f}%")
+    # Renderizar Métricas (Se distribuyen en dos filas de columnas para mayor prolijidad)
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Litros Ingresados", formato_miles(tot_ingresados_c))
+    col2.metric("Litros Procesados", formato_miles(tot_proc_c))
+    col3.metric("Producto Terminado", formato_miles(tot_pt_c))
+
+    col4, col5, _ = st.columns(3)
+    col4.metric("PNC (No Conforme)", formato_miles(tot_pnc_c))
+    col5.metric("Rendimiento (PT / Ingresados)", f"{ratio_ing_c:.2f}%")
 
     st.subheader("Detalle de Lotes de Producción Coopagro")
     if not df_p_filtered.empty:
@@ -801,7 +827,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         df_p_show['Producto Terminado'] = df_p_show['Producto Terminado'].apply(formato_miles)
         df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
         df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(pd.to_numeric(str(x['Producto Terminado']).replace('.','')) / pd.to_numeric(str(x['Litros Procesados']).replace('.','')) * 100):.2f}%" if pd.to_numeric(str(x['Litros Procesados']).replace('.','')) > 0 else "0.00%", axis=1)
-        # Corregido: se eliminó 'Loid' que causaba el KeyError
         st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']], use_container_width=True, hide_index=True)
     else:
         st.info("No hay registros de producción para el período seleccionado.")
