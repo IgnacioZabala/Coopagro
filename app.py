@@ -490,7 +490,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   
   try:
     with st.spinner("Sincronizando datos de Mastellone..."):
-      # 1. Cargar Producción (RE-PRO-52)
       raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
@@ -500,7 +499,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["PNC"] = raw_prod.iloc[:, 6]
       df_prod = df_prod.dropna(subset=["Fecha"])
       
-      # Forzamos formato de fecha robusto
       df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], format="mixed", dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
@@ -516,23 +514,17 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Mes"] = df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # 2. Cargar Recepción Diaria (Hoja 2 de FILE_ID_MASTELLONE)
       df_mhsa = pd.DataFrame()
       try:
           xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
           sheet_mhsa = xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0]
-          
           df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
           
           df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, 0]
           df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2]
           df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
           df_mhsa["Litros_Ticket"] = df_mhsa_raw.iloc[:, 4]
-          
-          if len(df_mhsa_raw.columns) > 7:
-              df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, 7]
-          else:
-              df_mhsa["Temperatura"] = pd.NA
+          df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, 7] if len(df_mhsa_raw.columns) > 7 else pd.NA
           
           df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
           df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
@@ -546,7 +538,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       except Exception as e:
           st.sidebar.warning(f"Error al cargar la hoja 2 (MHSA Diario): {e}")
       
-      # 3. Cargar Litros Mes (Hoja 3: MHSA Litros Mes)
       df_mhsa_litros = pd.DataFrame()
       try:
           sheet_litros = next((s for s in xls_mastellone.sheet_names if "litros" in s.lower() and "mes" in s.lower()), None)
@@ -555,29 +546,23 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               
           if sheet_litros:
               df_litros_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_litros)
-              
-              # Lógica adaptable: Si pusiste Año en A (3 columnas o más) o si quedó como en tu foto (2 columnas)
               if len(df_litros_raw.columns) >= 3:
                   df_mhsa_litros["Año"] = pd.to_numeric(df_litros_raw.iloc[:, 0], errors="coerce").fillna(2026).astype(int)
                   df_mhsa_litros["Mes"] = pd.to_numeric(df_litros_raw.iloc[:, 1], errors="coerce").fillna(0).astype(int)
                   df_mhsa_litros["Litros"] = pd.to_numeric(df_litros_raw.iloc[:, 2], errors="coerce").fillna(0)
               else:
-                  # Fallback por si la estructura es como en la captura de pantalla (A=Mes, B=Litros)
                   df_mhsa_litros["Año"] = 2026
                   df_mhsa_litros["Mes"] = pd.to_numeric(df_litros_raw.iloc[:, 0], errors="coerce").fillna(0).astype(int)
                   df_mhsa_litros["Litros"] = pd.to_numeric(df_litros_raw.iloc[:, 1], errors="coerce").fillna(0)
       except Exception as e:
           st.sidebar.warning(f"Error al cargar la hoja 3 (Litros Mes): {e}")
 
-      # 4. Cargar Laboratorio y cruzar con Recepción
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
       if not df_mhsa.empty:
-          # --- Procesar MilkoScan ---
           if not df_lab_raw.empty:
               df_lab_m = df_lab_raw.copy()
               col_sample = df_lab_m.columns[0]
-              
               df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
               df_lab_m["Fecha_Extraida"] = pd.to_datetime(df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
               
@@ -606,14 +591,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                       df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
                   df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
 
-          # --- Procesar BacSomatic ---
           if not df_bac_raw.empty:
               df_bac_m = df_bac_raw.copy()
-              if len(df_bac_m.columns) > 5:
-                  col_sample_bac = df_bac_m.columns[5]
-              else:
-                  col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
-              
+              col_sample_bac = df_bac_m.columns[5] if len(df_bac_m.columns) > 5 else next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
               df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
               df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
               
@@ -640,13 +620,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                       df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
                   df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
 
-    # ==========================================
-    # FILTROS POR DEFECTO DINÁMICOS
-    # ==========================================
     st.sidebar.subheader("Filtros Mastellone")
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
     anios_prod = df_mastellone_prod["Año"].dropna().unique().tolist() if not df_mastellone_prod.empty else []
-    todos_anios = sorted(list(set(anios_mhsa + anios_prod + df_mhsa_litros["Año"].tolist() if not df_mhsa_litros.empty else [])))
+    todos_anios = sorted(list(set(anios_mhsa + anios_prod + (df_mhsa_litros["Año"].tolist() if not df_mhsa_litros.empty else []))))
     
     opciones_anio = ["Todos"] + (todos_anios if todos_anios else [now.year])
     default_anio_idx = opciones_anio.index(now.year) if now.year in opciones_anio else 0
@@ -656,10 +633,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     default_mes_idx = opciones_mes.index(now.month) if now.month in opciones_mes else 0
     filtro_mes = st.sidebar.selectbox("Mes", opciones_mes, index=default_mes_idx, key="m_mes_mastellone")
 
-    # ==========================================
-    # CÁLCULOS Y MÉTRICAS
-    # ==========================================
-    # Filtro de Producción
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
       if filtro_anio != "Todos": df_filtrado = df_filtrado[df_filtrado["Año"] == filtro_anio]
@@ -672,7 +645,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_consolidado_raw["Ratio Consolidado (%)"] = df_consolidado_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
       df_consolidado = df_consolidado_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio Consolidado (%)"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio Consolidado (%)": "Ratio de Conversión (%)"})
 
-    # Filtro de Litros Ingresados Brutos (Hoja 3)
     df_mhsa_litros_f = df_mhsa_litros.copy()
     if not df_mhsa_litros_f.empty:
         if filtro_anio != "Todos": df_mhsa_litros_f = df_mhsa_litros_f[df_mhsa_litros_f["Año"] == int(filtro_anio)]
@@ -695,9 +667,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     c4.metric("Ratio PT / Procesados", f"{ratio_ponderado:.2f}%")
     c5.metric("Ratio PT / Ingresados", f"{rendimiento_ingreso:.2f}%")
 
-    # ==========================================
-    # VISUALIZACIÓN EN TABS
-    # ==========================================
     tab1, tab2 = st.tabs(["📑 Recepción y Calidad (MHSA)", "🏭 Producción Fasón"])
     
     with tab1:
@@ -750,18 +719,16 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN COOPAGRO
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (CORREGIDO Y COMPLETADO)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
-  st.header("Producción Coopagro")
+  st.header("🧀 Producción y Rendimiento Coopagro")
   try:
-    with st.spinner("Sincronizando datos de Coopagro..."):
+    with st.spinner("Sincronizando datos de producción Coopagro..."):
       import time
       
-      # 1. Cargar Producción con anti-caché
       url_prod_limpia = f"{URL_PRODUCCION}&t={int(time.time())}"
       xls_prod = pd.ExcelFile(url_prod_limpia)
-      
       hoja_prod = "2026" if "2026" in xls_prod.sheet_names else xls_prod.sheet_names[-1]
           
       raw_prod = pd.read_excel(xls_prod, sheet_name=hoja_prod, skiprows=6)
@@ -780,7 +747,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col], errors='coerce').fillna(0)
           
-      # --- LÓGICA DE CLASIFICACIÓN INTELIGENTE DE LOTES ---
       def clasificar_lote(lote):
           lote_str = str(lote).upper()
           if "840" in lote_str:
@@ -792,10 +758,8 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
           elif "288" in lote_str:
               return "Muzzarella Exportacion Coop.", "Coopagro"
           else:
-              # Si inventan un código nuevo, lo manda a Coopagro por defecto para que no desaparezca
               return f"Otro Prod. ({lote_str[5:8] if len(lote_str)>8 else 'N/A'})", "Coopagro" 
 
-      # Aplicamos la clasificación
       if len(df_prod) > 0: 
           df_prod["Producto"] = df_prod["Lote"].apply(lambda x: clasificar_lote(x)[0])
           df_prod["Grupo"] = df_prod["Lote"].apply(lambda x: clasificar_lote(x)[1])
@@ -806,19 +770,45 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       df_prod['Mes'] = df_prod['Fecha'].dt.month
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
-      # 2. Cargar Recibo con anti-caché
-      url_recibo_limpia = f"{URL_REMITOS}&t={int(time.time())}"
-      raw_recibo = pd.read_excel(url_recibo_limpia)
-      
-      df_recibo = pd.DataFrame()
-      df_recibo['Fecha_Raw'] = raw_recibo.iloc[:, 1] 
-      df_recibo['Litros Ingresados'] = pd.to_numeric(raw_recibo.iloc[:, 5], errors='coerce').fillna(0)
-      
-      df_recibo['Fecha'] = pd.to_datetime(df_recibo['Fecha_Raw'], format="mixed", dayfirst=True, errors='coerce')
-      df_recibo = df_recibo.dropna(subset=['Fecha'])
-      
-      df_recibo['Año'], df_recibo['Mes'] = df_recibo['Fecha'].dt.year, df_recibo['Fecha'].dt.month
-      recibo_mensual = df_recibo.groupby(['Año', 'Mes'])['Litros Ingresados'].sum().reset_index()
+    # Filtros de visualización para Producción Coopagro
+    st.sidebar.subheader("Filtros Producción Coopagro")
+    anios_p = sorted(df_prod_coop['Año'].unique().tolist()) if not df_prod_coop.empty else [2026]
+    op_anio_p = ["Todos"] + anios_p
+    f_anio_p = st.sidebar.selectbox("Año Producción", op_anio_p, key="p_anio_coop")
+    f_mes_p = st.sidebar.selectbox("Mes Producción", ["Todos"] + list(range(1, 13)), key="p_mes_coop")
+
+    df_p_filtered = df_prod_coop.copy()
+    if f_anio_p != "Todos":
+        df_p_filtered = df_p_filtered[df_p_filtered['Año'] == f_anio_p]
+    if f_mes_p != "Todos":
+        df_p_filtered = df_p_filtered[df_p_filtered['Mes'] == f_mes_p]
+
+    tot_proc_c = df_p_filtered['Litros Procesados'].sum() if not df_p_filtered.empty else 0
+    tot_pt_c = df_p_filtered['Producto Terminado'].sum() if not df_p_filtered.empty else 0
+    tot_pnc_c = df_p_filtered['PNC'].sum() if not df_p_filtered.empty else 0
+    ratio_c = (tot_pt_c / tot_proc_c * 100) if tot_proc_c > 0 else 0
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Litros Procesados", formato_miles(tot_proc_c))
+    col2.metric("Producto Terminado", formato_miles(tot_pt_c))
+    col3.metric("PNC (No Conforme)", formato_miles(tot_pnc_c))
+    col4.metric("Rendimiento (%)", f"{ratio_c:.2f}%")
+
+    st.subheader("Detalle de Lotes de Producción Coopagro")
+    if not df_p_filtered.empty:
+        df_p_show = df_p_filtered.copy()
+        df_p_show['Fecha'] = df_p_show['Fecha'].dt.strftime('%d/%m/%Y')
+        df_p_show['Litros Procesados'] = df_p_show['Litros Procesados'].apply(formato_miles)
+        df_p_show['Producto Terminado'] = df_p_show['Producto Terminado'].apply(formato_miles)
+        df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
+        df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(pd.to_numeric(str(x['Producto Terminado']).replace('.','')) / pd.to_numeric(str(x['Litros Procesados']).replace('.','')) * 100):.2f}%" if pd.to_numeric(str(x['Litros Procesados']).replace('.','')) > 0 else "0.00%", axis=1)
+        st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']], use_container_width=True, hide_index=True)
+    else:
+        st.info("No hay registros de producción para el período seleccionado.")
+
+  except Exception as e:
+    st.error(f"Error en el Módulo de Producción y Rendimiento: {e}")
+    st.code(traceback.format_exc())
 
 # =========================================================================
 # MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS
