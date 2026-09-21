@@ -828,36 +828,23 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
   try:
     with st.spinner("Cargando maestro de insumos y costos..."):
       import time
-      
-      # 1. Cargar el Maestro de Insumos desde Google Sheets (con anti-caché)
       sheet_id = "1Zaqtkadw4Mhgcc8WuuFb1YlXvvWbMsM4"
       sheet_name = "Maestro_Insumos"
       url_insumos = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}&t={int(time.time())}"
-      
       df_insumos = pd.read_csv(url_insumos)
       df_insumos.columns = df_insumos.columns.str.strip()
 
-    # Sub-pestañas para ordenar la gestión
     tab_inv1, tab_inv2 = st.tabs(["📊 Estado y Alertas de Stock", "📝 Registrar Ingreso de Mercadería"])
 
     with tab_inv1:
         st.subheader("Control de Stock y Puntos de Pedido")
-        
         if not df_insumos.empty:
             df_mostrar_ins = df_insumos.copy()
-            
-            # Limpieza y conversión de columnas numéricas si existen
             for col in ['Consumo por tina', 'Stock de seguridad', 'Demora proveedor (dias)']:
                 if col in df_mostrar_ins.columns:
-                    df_mostrar_ins[col] = pd.to_numeric(
-                        df_mostrar_ins[col].astype(str).str.replace(',', '.'), 
-                        errors='coerce'
-                    ).fillna(0)
-
-            # Visualización de la tabla de insumos activos
+                    df_mostrar_ins[col] = pd.to_numeric(df_mostrar_ins[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
             st.dataframe(df_mostrar_ins, use_container_width=True, hide_index=True)
             
-            # Métricas rápidas del inventario
             col_m1, col_m2, col_m3 = st.columns(3)
             col_m1.metric("Insumos Monitoreados", len(df_mostrar_ins))
             col_m2.metric("Alertas Activas", "0 insumos críticos")
@@ -868,21 +855,17 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     with tab_inv2:
         st.subheader("Formulario de Ingreso de Remito de Insumos")
         st.markdown("Registrá la entrada de mercadería para actualizar las existencias en planta.")
-        
         with st.form("form_ingreso_insumos"):
             col_f1, col_f2 = st.columns(2)
-            
             with col_f1:
                 lista_insumos = df_insumos['Insumo'].tolist() if 'Insumo' in df_insumos.columns else ["Cloruro de calcio (32%)", "Sal Entrefina Celusal"]
                 insumo_seleccionado = st.selectbox("Seleccionar Insumo", lista_insumos)
                 cantidad_ingresada = st.number_input("Cantidad Recibida", min_value=0.0, step=1.0)
-                
             with col_f2:
                 nro_remito = st.text_input("Número de Remito / Factura")
                 proveedor = st.text_input("Proveedor")
                 
             submitted = st.form_submit_button("💾 Guardar Ingreso de Mercadería")
-            
             if submitted:
                 if nro_remito and cantidad_ingresada > 0:
                     st.success(f"¡Ingreso registrado con éxito! Remito: {nro_remito} - {cantidad_ingresada} unidades de {insumo_seleccionado}.")
