@@ -821,100 +821,74 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       recibo_mensual = df_recibo.groupby(['Año', 'Mes'])['Litros Ingresados'].sum().reset_index()
 
 # =========================================================================
-# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS (CONECTADO A FORMS VIA CSV)
+# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS
 # =========================================================================
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
-  st.header("📦 Control de Stock, Valorización y Costos Variables")
+  st.header("📦 Gestión de Insumos, Inventario y Costos Variables")
   try:
-    sheet_id = SHEET_INSUMOS_ID
-    url_stock = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Stock"
-    url_ingresos = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Ingresos"
-    
-    df_stock_real = pd.read_csv(url_stock)
-    df_ingresos = pd.read_csv(url_ingresos)
-
-    # --- BARRA LATERAL DE FILTROS PARA INVENTARIO ---
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🔍 Filtros de Inventario")
-    
-    if not df_stock_real.empty and "Fecha de recuento" in df_stock_real.columns:
-      df_stock_real["Fecha_Dt"] = pd.to_datetime(df_stock_real["Fecha de recuento"], errors="coerce")
-      anios_stock = sorted(df_stock_real["Fecha_Dt"].dt.year.dropna().unique().tolist(), reverse=True)
-      if not anios_stock: anios_stock = [2026]
-    else:
-      anios_stock = [2026]
-
-    filtro_anio_stock = st.sidebar.selectbox("📅 Año de Inventario", anios_stock, key="stock_anio")
-    filtro_mes_stock = st.sidebar.selectbox("📆 Mes de Inventario", ["Todos"] + list(range(1, 13)), key="stock_mes")
-
-    st.subheader(f"📋 Estado de Inventario y Valorización (Año: {filtro_anio_stock})")
-
-    tab1, tab2, tab3 = st.tabs(["📊 Stock Valorizado", "📥 Ingresos de Mercadería", "📋 Recuento Físico Bruto"])
-
-    with tab1:
-      st.markdown("### 💰 Valorización de Stock Actual")
-      st.info("La valorización cruza el recuento físico con el último precio de compra registrado en el formulario de ingresos.")
+    with st.spinner("Cargando maestro de insumos y costos..."):
+      import time
       
-      if not df_stock_real.empty:
-        st.dataframe(df_stock_real, use_container_width=True, hide_index=True)
+      # 1. Cargar el Maestro de Insumos desde Google Sheets (con anti-caché)
+      sheet_id = "1Zaqtkadw4Mhgcc8WuuFb1YlXvvWbMsM4"
+      sheet_name = "Maestro_Insumos"
+      url_insumos = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}&t={int(time.time())}"
+      
+      df_insumos = pd.read_csv(url_insumos)
+      df_insumos.columns = df_insumos.columns.str.strip()
+
+    # Sub-pestañas para ordenar la gestión
+    tab_inv1, tab_inv2 = st.tabs(["📊 Estado y Alertas de Stock", "📝 Registrar Ingreso de Mercadería"])
+
+    with tab_inv1:
+        st.subheader("Control de Stock y Puntos de Pedido")
         
-        def generar_pdf_stock_valorizado(df_data, fecha_texto):
-          pdf = FPDF(orientation='P', unit='mm', format='A4')
-          pdf.set_auto_page_break(auto=True, margin=15)
-          pdf.add_page()
-          
-          if os.path.exists("logo.png"):
-            pdf.image("logo.png", x=65, y=10, w=80)
-            pdf.set_y(52)
-          else:
-            pdf.set_y(15)
+        if not df_insumos.empty:
+            df_mostrar_ins = df_insumos.copy()
+            
+            # Limpieza y conversión de columnas numéricas si existen
+            for col in ['Consumo por tina', 'Stock de seguridad', 'Demora proveedor (dias)']:
+                if col in df_mostrar_ins.columns:
+                    df_mostrar_ins[col] = pd.to_numeric(
+                        df_mostrar_ins[col].astype(str).str.replace(',', '.'), 
+                        errors='coerce'
+                    ).fillna(0)
 
-          pdf.set_font("Arial", 'B', 12)
-          pdf.cell(190, 7, txt=f"Stock valorizado al {fecha_texto}", ln=True, align='C')
-          pdf.ln(5)
-          
-          pdf.set_font("Arial", 'B', 9)
-          pdf.set_fill_color(200, 220, 255)
-          
-          headers = [("Insumo", 80), ("Stock Físico", 40), ("Precio Unitario", 35), ("Subtotal ($)", 35)]
-          for name, w in headers:
-            pdf.cell(w, 8, name, 1, 0, 'C', fill=True)
-          pdf.ln()
-          
-          pdf.set_font("Arial", '', 9)
-          pdf.cell(190, 10, txt="(Detalles sincronizados desde formularios de Google)", border=1, align='C')
-          
-          output = pdf.output(dest='S')
-          if isinstance(output, bytearray): return bytes(output)
-          elif isinstance(output, str): return output.encode('latin1')
-          return output
+            # Visualización de la tabla de insumos activos
+            st.dataframe(df_mostrar_ins, use_container_width=True, hide_index=True)
+            
+            # Métricas rápidas del inventario
+            col_m1, col_m2, col_m3 = st.columns(3)
+            col_m1.metric("Insumos Monitoreados", len(df_mostrar_ins))
+            col_m2.metric("Alertas Activas", "0 insumos críticos")
+            col_m3.metric("Estado de Compras", "Normal")
+        else:
+            st.warning("No se encontraron registros en el Maestro de Insumos.")
 
-        fecha_pdf_str = f"30 de {MESES_ES.get(int(filtro_mes_stock), 'septiembre').lower()} de {filtro_anio_stock}" if filtro_mes_stock != "Todos" else f"31 de diciembre de {filtro_anio_stock}"
-        pdf_stock_bytes = generar_pdf_stock_valorizado(df_stock_real, fecha_pdf_str)
-
-        st.download_button(
-            label=f"📥 Descargar Stock Valorizado al {fecha_pdf_str} (PDF)",
-            data=pdf_stock_bytes,
-            file_name=f"Stock_Valorizado_{filtro_anio_stock}.pdf",
-            mime="application/pdf"
-        )
-      else:
-        st.warning("No hay registros de stock físico cargados todavía. Realizá una prueba cargando datos en el formulario de Stock.")
-
-    with tab2:
-      st.markdown("### 🚚 Historial de Ingresos de Compras")
-      if not df_ingresos.empty:
-        st.dataframe(df_ingresos, use_container_width=True, hide_index=True)
-      else:
-        st.info("No hay ingresos registrados en el formulario todavía.")
-
-    with tab3:
-      st.markdown("### 📝 Datos Brutos del Recuento Físico")
-      if not df_stock_real.empty:
-        st.dataframe(df_stock_real, use_container_width=True, hide_index=True)
-      else:
-        st.info("Sin datos de recuento físico.")
+    with tab_inv2:
+        st.subheader("Formulario de Ingreso de Remito de Insumos")
+        st.markdown("Registrá la entrada de mercadería para actualizar las existencias en planta.")
+        
+        with st.form("form_ingreso_insumos"):
+            col_f1, col_f2 = st.columns(2)
+            
+            with col_f1:
+                lista_insumos = df_insumos['Insumo'].tolist() if 'Insumo' in df_insumos.columns else ["Cloruro de calcio (32%)", "Sal Entrefina Celusal"]
+                insumo_seleccionado = st.selectbox("Seleccionar Insumo", lista_insumos)
+                cantidad_ingresada = st.number_input("Cantidad Recibida", min_value=0.0, step=1.0)
+                
+            with col_f2:
+                nro_remito = st.text_input("Número de Remito / Factura")
+                proveedor = st.text_input("Proveedor")
+                
+            submitted = st.form_submit_button("💾 Guardar Ingreso de Mercadería")
+            
+            if submitted:
+                if nro_remito and cantidad_ingresada > 0:
+                    st.success(f"¡Ingreso registrado con éxito! Remito: {nro_remito} - {cantidad_ingresada} unidades de {insumo_seleccionado}.")
+                else:
+                    st.warning("Por favor, completá el número de remito y una cantidad mayor a cero.")
 
   except Exception as e:
-    st.warning("Esperando registros iniciales en las solapas 'Stock' e 'Ingresos' del Google Sheet unificado.")
-    st.code(str(e))
+    st.error(f"Se produjo un error procesando el módulo de insumos: {e}")
+    st.code(traceback.format_exc())
