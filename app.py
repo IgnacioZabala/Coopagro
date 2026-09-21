@@ -519,12 +519,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_mhsa = pd.DataFrame()
       try:
           xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
-          # Seleccionar la Hoja 2 (índice 1) para remitos diarios
           sheet_mhsa = xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0]
           
           df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
           
-          # Extraer columnas fijas por posición: Fecha (A/0), N° Tambo (C/2), Tambo (D/3), Litros (E/4), Temp (H/7)
           df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, 0]
           df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2]
           df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
@@ -550,9 +548,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       # 3. Cargar Litros Mes (Hoja 3 de FILE_ID_MASTELLONE)
       df_mhsa_litros = pd.DataFrame()
       try:
-          # Seleccionar la Hoja 3 (índice 2) para litros mensuales
           sheet_litros = xls_mastellone.sheet_names[2] if len(xls_mastellone.sheet_names) > 2 else None
-          
           if sheet_litros:
               df_litros_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_litros)
               cols_lower = [str(c).lower() for c in df_litros_raw.columns]
@@ -584,12 +580,13 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               col_sample = df_lab_m.columns[0]
               
               df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-              df_lab_m["Fecha_Extraida"] = df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
+              df_lab_m["Fecha_Extraida"] = pd.to_datetime(df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
               
               col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
               if col_date:
                   df_lab_m["Fecha_Analisis"] = pd.to_datetime(df_lab_m[col_date], errors="coerce").dt.normalize()
-                  df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].combine_first(df_lab_m["Fecha_Analisis"])
+                  # Solución: Usar fillna garantizando tipo datetime
+                  df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(df_lab_m["Fecha_Analisis"])
               else:
                   df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"]
               
@@ -620,12 +617,13 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
               
               df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-              df_bac_m["Fecha_Extraida"] = df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto)
+              df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
               
               col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
               if col_date_bac:
                   df_bac_m["Fecha_Analisis"] = pd.to_datetime(df_bac_m[col_date_bac], errors="coerce").dt.normalize()
-                  df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].combine_first(df_bac_m["Fecha_Analisis"])
+                  # Solución: Usar fillna garantizando tipo datetime
+                  df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(df_bac_m["Fecha_Analisis"])
               else:
                   df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"]
 
@@ -676,7 +674,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_consolidado_raw["Ratio Consolidado (%)"] = df_consolidado_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
       df_consolidado = df_consolidado_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio Consolidado (%)"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio Consolidado (%)": "Ratio de Conversión (%)"})
 
-    # Usar la Hoja 3 (MHSA litros mes) para el Total Ingresado Bruto
     df_mhsa_litros_f = df_mhsa_litros.copy()
     if not df_mhsa_litros_f.empty:
         if filtro_anio != "Todos": df_mhsa_litros_f = df_mhsa_litros_f[df_mhsa_litros_f["Año"] == filtro_anio]
