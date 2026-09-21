@@ -719,7 +719,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (ACTUALIZADO)
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (ACTUALIZADO CON RATIO PROCESADOS/PT)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -809,15 +809,16 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     ratio_proc_c = (tot_pt_c / tot_proc_c * 100) if tot_proc_c > 0 else 0
     ratio_ing_c = (tot_pt_c / tot_ingresados_c * 100) if tot_ingresados_c > 0 else 0
 
-    # Renderizar Métricas (Se distribuyen en dos filas de columnas para mayor prolijidad)
+    # Renderizar Métricas en dos filas organizadas
     col1, col2, col3 = st.columns(3)
     col1.metric("Litros Ingresados", formato_miles(tot_ingresados_c))
     col2.metric("Litros Procesados", formato_miles(tot_proc_c))
     col3.metric("Producto Terminado", formato_miles(tot_pt_c))
 
-    col4, col5, _ = st.columns(3)
+    col4, col5, col6 = st.columns(3)
     col4.metric("PNC (No Conforme)", formato_miles(tot_pnc_c))
-    col5.metric("Rendimiento (PT / Ingresados)", f"{ratio_ing_c:.2f}%")
+    col5.metric("Rendimiento (PT / Procesados)", f"{ratio_proc_c:.2f}%")
+    col6.metric("Rendimiento (PT / Ingresados)", f"{ratio_ing_c:.2f}%")
 
     st.subheader("Detalle de Lotes de Producción Coopagro")
     if not df_p_filtered.empty:
