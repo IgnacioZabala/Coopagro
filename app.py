@@ -148,7 +148,7 @@ def procesar_lote_mastellone(lote_str):
   return mapping_prod.get(prod_code, f"Desconocido ({prod_code})"), mapping_grupo.get(prod_code, "Otro")
 
 # =========================================================================
-# FUNCIONES DE PDF BLINDADAS (CON FIX BYTEARRAY Y LOGO)
+# FUNCIONES DE PDF BLINDADAS (CON LOGO AJUSTADO)
 # =========================================================================
 def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list, df_datos: pd.DataFrame, filas_mapeo: list, usable_width: int = 190):
   pdf = FPDF(orientation="P", unit="mm", format="A4")
@@ -156,16 +156,17 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   pdf.add_page()
   
   if os.path.exists("logo.png"):
-    pdf.image("logo.png", x=65, y=10, w=80)
-    pdf.set_y(52)
+    # Logo ajustado en ancho (40mm) y centrado para evitar superposición
+    pdf.image("logo.png", x=85, y=10, w=40)
+    pdf.set_y(32)
   else:
     pdf.set_y(15)
 
   pdf.set_font("Arial", "B", 12)
   pdf.cell(0, 6, titulo, ln=True, align="C")
-  pdf.ln(4)
+  pdf.ln(2)
   pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-  pdf.ln(6)
+  pdf.ln(4)
 
   pdf.set_font("Arial", "B", 11)
   pdf.cell(0, 7, subtitulo, ln=True)
@@ -719,7 +720,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (CORREGIDO Y COMPLETADO)
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -770,7 +771,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       df_prod['Mes'] = df_prod['Fecha'].dt.month
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
-    # Filtros de visualización para Producción Coopagro
     st.sidebar.subheader("Filtros Producción Coopagro")
     anios_p = sorted(df_prod_coop['Año'].unique().tolist()) if not df_prod_coop.empty else [2026]
     op_anio_p = ["Todos"] + anios_p
