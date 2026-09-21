@@ -148,7 +148,7 @@ def procesar_lote_mastellone(lote_str):
   return mapping_prod.get(prod_code, f"Desconocido ({prod_code})"), mapping_grupo.get(prod_code, "Otro")
 
 # =========================================================================
-# FUNCIONES DE PDF BLINDADAS (CON LOGO AJUSTADO)
+# FUNCIONES DE PDF BLINDADAS (CON TEXTO MÁS ABAJO)
 # =========================================================================
 def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list, df_datos: pd.DataFrame, filas_mapeo: list, usable_width: int = 190):
   pdf = FPDF(orientation="P", unit="mm", format="A4")
@@ -156,11 +156,12 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   pdf.add_page()
   
   if os.path.exists("logo.png"):
-    # Logo ajustado en ancho (40mm) y centrado para evitar superposición
-    pdf.image("logo.png", x=85, y=10, w=40)
-    pdf.set_y(32)
+    # Logo arriba y compacto
+    pdf.image("logo.png", x=89, y=8, w=32)
+    # Bajamos el cursor marcadamente para que el texto arranque mucho más abajo
+    pdf.set_y(50)
   else:
-    pdf.set_y(15)
+    pdf.set_y(20)
 
   pdf.set_font("Arial", "B", 12)
   pdf.cell(0, 6, titulo, ln=True, align="C")
@@ -802,7 +803,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         df_p_show['Producto Terminado'] = df_p_show['Producto Terminado'].apply(formato_miles)
         df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
         df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(pd.to_numeric(str(x['Producto Terminado']).replace('.','')) / pd.to_numeric(str(x['Litros Procesados']).replace('.','')) * 100):.2f}%" if pd.to_numeric(str(x['Litros Procesados']).replace('.','')) > 0 else "0.00%", axis=1)
-        st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']], use_container_width=True, hide_index=True)
+        st.dataframe(df_p_show[['Fecha', 'Loid', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']], use_container_width=True, hide_index=True)
     else:
         st.info("No hay registros de producción para el período seleccionado.")
 
