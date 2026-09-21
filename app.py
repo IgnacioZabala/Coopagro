@@ -719,7 +719,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (ACTUALIZADO CON LETRA DE MES)
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (EXCLUSIVO COOPAGRO)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -748,40 +748,32 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col], errors='coerce').fillna(0)
           
-      def clasificar_lote(lote):
+      def clasificar_lote_coopagro(lote):
           lote_str = str(lote).strip().upper()
-          if not lote_str:
-              return "Desconocido", "Otro"
+          if len(lote_str) >= 8:
+              prod_code = lote_str[5:8]
+          else:
+              prod_code = ""
 
-          # 1. Extraer mes por la letra inicial (A=1, B=2, ..., H=8, I=9, etc.)
-          primera_letra = lote_str[0]
-          mes_por_letra = ord(primera_letra) - 64 if primera_letra.isalpha() else None
-
-          # 2. Extraer código de producto (dígitos centrales, ej: 288, 125, 488, 840)
-          prod_code = lote_str[5:8] if len(lote_str) >= 8 else ""
-
+          # Mapeo exclusivo de productos de Coopagro (excluyendo 840 de Mastellone)
           mapping_prod = {
               "288": "Muzzarella Exportacion Coop.",
               "125": "Muzarrella Piano",
               "488": "Tybo Coop.",
-              "840": "Muzzarella Exportacion Mastellone",
           }
           
           if prod_code in mapping_prod:
-              if prod_code == "840":
-                  return mapping_prod[prod_code], "Mastellone"
-              else:
-                  return mapping_prod[prod_code], "Coopagro"
+              return mapping_prod[prod_code], "Coopagro"
           
-          # Fallback general para cualquier lote válido de Coopagro basado en su letra de mes
-          if mes_por_letra and 1 <= mes_por_letra <= 12:
-              return f"Producto Coopagro ({prod_code if prod_code else 'Genérico'})", "Coopagro"
+          # Si es cualquier otro código que pertenezca a Coopagro (y no sea Mastellone 840)
+          if prod_code != "840" and (lote_str.startswith("H") or lote_str.startswith("I") or lote_str.startswith("J")):
+              return f"Producto Coopagro ({prod_code})", "Coopagro"
               
           return f"Otro Prod. ({prod_code})", "Otro"
 
       if len(df_prod) > 0: 
-          df_prod["Producto"] = df_prod["Lote"].apply(lambda x: clasificar_lote(x)[0])
-          df_prod["Grupo"] = df_prod["Lote"].apply(lambda x: clasificar_lote(x)[1])
+          df_prod["Producto"] = df_prod["Lote"].apply(lambda x: clasificar_lote_coopagro(x)[0])
+          df_prod["Grupo"] = df_prod["Lote"].apply(lambda x: clasificar_lote_coopagro(x)[1])
       else: 
           df_prod['Producto'], df_prod['Grupo'] = [], []
           
@@ -853,7 +845,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
   except Exception as e:
     st.error(f"Error en el Módulo de Producción y Rendimiento: {e}")
     st.code(traceback.format_exc())
-
 # =========================================================================
 # MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS
 # =========================================================================
