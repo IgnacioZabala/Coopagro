@@ -758,39 +758,55 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     with st.spinner("Sincronizando datos de Coopagro..."):
       import time
       
-      # 1. Cargar Producción (RE-PRO-52) - [CORRECCIÓN DE SOLAPAS Y ANTI-CACHÉ]
+      # 1. Cargar Producción con anti-caché
       url_prod_limpia = f"{URL_PRODUCCION}&t={int(time.time())}"
       xls_prod = pd.ExcelFile(url_prod_limpia)
       
-      # Forzamos a Python a buscar la solapa '2026'
-      if "2026" in xls_prod.sheet_names:
-          hoja_prod = "2026"
-      else:
-          hoja_prod = xls_prod.sheet_names[-1]
+      hoja_prod = "2026" if "2026" in xls_prod.sheet_names else xls_prod.sheet_names[-1]
           
       raw_prod = pd.read_excel(xls_prod, sheet_name=hoja_prod, skiprows=6)
       
       df_prod = pd.DataFrame()
-      df_prod['Fecha'], df_prod['Lote'] = raw_prod.iloc[:, 0], raw_prod.iloc[:, 1]
-      df_prod['Litros Procesados'], df_prod['Producto Terminado'], df_prod['PNC'] = raw_prod.iloc[:, 3], raw_prod.iloc[:, 5], raw_prod.iloc[:, 6]
+      df_prod['Fecha'] = raw_prod.iloc[:, 0]
+      df_prod['Lote'] = raw_prod.iloc[:, 1]
+      df_prod['Litros Procesados'] = raw_prod.iloc[:, 3]
+      df_prod['Producto Terminado'] = raw_prod.iloc[:, 5]
+      df_prod['PNC'] = raw_prod.iloc[:, 6]
       df_prod = df_prod.dropna(subset=['Fecha'])
       
-      # Formato de fecha robusto
       df_prod['Fecha'] = pd.to_datetime(df_prod['Fecha'], format="mixed", dayfirst=True, errors='coerce')
       df_prod = df_prod.dropna(subset=['Fecha'])
       
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col], errors='coerce').fillna(0)
           
+      # --- LÓGICA DE CLASIFICACIÓN INTELIGENTE DE LOTES ---
+      def clasificar_lote(lote):
+          lote_str = str(lote).upper()
+          if "840" in lote_str:
+              return "Muzzarella Mastellone", "Mastellone"
+          elif "488" in lote_str:
+              return "Tybo Coopagro", "Coopagro"
+          elif "125" in lote_str:
+              return "Muzzarella Piano", "Coopagro"
+          elif "288" in lote_str:
+              return "Muzzarella Exportacion Coop.", "Coopagro"
+          else:
+              # Si inventan un código nuevo, lo manda a Coopagro por defecto para que no desaparezca
+              return f"Otro Prod. ({lote_str[5:8] if len(lote_str)>8 else 'N/A'})", "Coopagro" 
+
+      # Aplicamos la clasificación
       if len(df_prod) > 0: 
-          df_prod['Producto'], df_prod['Grupo'] = zip(*df_prod['Lote'].astype(str).apply(procesar_lote_mastellone))
+          df_prod["Producto"] = df_prod["Lote"].apply(lambda x: clasificar_lote(x)[0])
+          df_prod["Grupo"] = df_prod["Lote"].apply(lambda x: clasificar_lote(x)[1])
       else: 
           df_prod['Producto'], df_prod['Grupo'] = [], []
           
-      df_prod['Año'], df_prod['Mes'] = df_prod['Fecha'].dt.year, df_prod['Fecha'].dt.month
+      df_prod['Año'] = df_prod['Fecha'].dt.year
+      df_prod['Mes'] = df_prod['Fecha'].dt.month
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
-      # 2. Cargar Recibo (URL_REMITOS) - Anti-caché incorporado
+      # 2. Cargar Recibo con anti-caché
       url_recibo_limpia = f"{URL_REMITOS}&t={int(time.time())}"
       raw_recibo = pd.read_excel(url_recibo_limpia)
       
@@ -803,146 +819,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       
       df_recibo['Año'], df_recibo['Mes'] = df_recibo['Fecha'].dt.year, df_recibo['Fecha'].dt.month
       recibo_mensual = df_recibo.groupby(['Año', 'Mes'])['Litros Ingresados'].sum().reset_index()
-
-    # --- Filtros ---
-    import datetime
-    now = datetime.datetime.now()
-    
-    st.sidebar.subheader("Filtros Coopagro")
-    anios_disponibles = sorted(df_prod_coop['Año'].dropna().unique().tolist()) if len(df_prod_coop) > 0 else []
-    opciones_anio = ["Todos"] + (anios_disponibles if anios_disponibles else [now.year])
-    default_anio = opciones_anio.index(now.year) if now.year in opciones_anio else 0
-    filtro_anio_coop = st.sidebar.selectbox("Año", opciones_anio, index=default_anio, key="coop_prod_anio")
-    
-    opciones_mes = ["Todos"] + list(range(1, 13))
-    default_mes = opciones_mes.index(now.month) if now.month in opciones_mes else 0
-    filtro_mes_coop = st.sidebar.selectbox("Mes", opciones_mes, index=default_mes, key="coop_prod_mes")
-
-    # --- Cálculos ---
-    df_filtrado = df_prod_coop.copy()
-    if len(df_filtrado) > 0:
-        if filtro_anio_coop != "Todos": df_filtrado = df_filtrado[df_filtrado['Año'] == int(filtro_anio_coop)]
-        if filtro_mes_coop != "Todos": df_filtrado = df_filtrado[df_filtrado['Mes'] == int(filtro_mes_coop)]
-
-    df_consolidado = pd.DataFrame(columns=['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'Ratio de Conversión (%)'])
-    if len(df_filtrado) > 0:
-        df_consolidado_raw = df_filtrado.copy()
-        df_consolidado_raw['PT_Total'] = df_consolidado_raw['Producto Terminado'] + df_consolidado_raw['PNC']
-        df_consolidado_raw['Ratio Consolidado (%)'] = df_consolidado_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x['Litros Procesados'] > 0 else "0.00%", axis=1)
-        df_consolidado = df_consolidado_raw[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'PT_Total', 'Ratio Consolidado (%)']].rename(columns={'PT_Total': 'Producto Terminado', 'Ratio Consolidado (%)': 'Ratio de Conversión (%)'})
-
-    df_recibo_filtrado = recibo_mensual.copy()
-    if not df_recibo_filtrado.empty:
-        if filtro_anio_coop != "Todos": df_recibo_filtrado = df_recibo_filtrado[df_recibo_filtrado['Año'] == int(filtro_anio_coop)]
-        if filtro_mes_coop != "Todos": df_recibo_filtrado = df_recibo_filtrado[df_recibo_filtrado['Mes'] == int(filtro_mes_coop)]
-        total_litros_ingresados = df_recibo_filtrado['Litros Ingresados'].sum()
-    else:
-        total_litros_ingresados = 0.0
-    
-    total_litros_proc = df_filtrado['Litros Procesados'].sum() if len(df_filtrado) > 0 else 0
-    total_prod_consolidado = df_consolidado['Producto Terminado'].sum() if len(df_consolidado) > 0 else 0
-    ratio_ponderado = (total_prod_consolidado / total_litros_proc * 100) if total_litros_proc > 0 else 0
-    rendimiento_ingreso = (total_prod_consolidado / total_litros_ingresados * 100) if total_litros_ingresados > 0 else 0
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Litros Ingresados", formato_miles(total_litros_ingresados))
-    c2.metric("Litros Procesados", formato_miles(total_litros_proc))
-    c3.metric("Total Producto Terminado", formato_miles(total_prod_consolidado))
-    
-    c4, c5, _ = st.columns(3)
-    c4.metric("Ratio PT / Procesados", f"{ratio_ponderado:.2f}%")
-    c5.metric("Ratio PT / Ingresados", f"{rendimiento_ingreso:.2f}%")
-
-    st.subheader("Registro de Lotes (Coopagro)")
-    if not df_consolidado.empty:
-        df_disp = df_consolidado.copy()
-        df_disp["Fecha"] = df_disp["Fecha"].dt.strftime("%d/%m/%Y")
-        df_disp["Litros Procesados"] = df_disp["Litros Procesados"].apply(formato_miles)
-        df_disp["Producto Terminado"] = df_disp["Producto Terminado"].apply(formato_miles)
-        st.dataframe(df_disp, use_container_width=True, hide_index=True)
-    else:
-        st.info("No hay registros de producción de Coopagro para el período seleccionado.")
-
-    # --- PDF ---
-    def generar_pdf_coopagro(dataframe_gerencia, titulo_dinamico, lit_ingresados, rend_gerencia, ratio_pond_gerenc, df_prod_raw_gerencia):
-        pdf = FPDF(orientation='P', unit='mm', format='A4')
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 13)
-        pdf.cell(190, 7, txt=titulo_dinamico, ln=True, align='C')
-        pdf.ln(3)
-        
-        pdf.set_font("Arial", 'B', 10)
-        pdf.cell(190, 5, txt="Resumen", ln=True, align='L')
-        pdf.set_font("Arial", '', 9)
-        
-        tot_lit = dataframe_gerencia['Litros Procesados'].sum()
-        tot_pro_ger = dataframe_gerencia['Producto Terminado'].sum()
-        
-        pdf.cell(95, 5, txt=f"Total Litros Ingresados: {formato_miles(lit_ingresados)}", ln=0)
-        pdf.cell(95, 5, txt=f"Ratio PT / Litros procesados: {ratio_pond_gerenc:.2f}%", ln=1)
-        pdf.cell(95, 5, txt=f"Total Litros Procesados: {formato_miles(tot_lit)}", ln=0)
-        pdf.cell(95, 5, txt=f"Ratio PT / Litros ingresados: {rend_gerencia:.2f}%", ln=1)
-        pdf.cell(95, 5, txt=f"Total Producto Terminado: {formato_miles(tot_pro_ger)}", ln=1)
-        pdf.ln(5)
-
-        pdf.set_font("Arial", 'B', 10)
-        pdf.cell(190, 5, txt="Cantidad por Producto:", ln=True, align='L')
-        pdf.set_font("Arial", '', 8)
-        
-        prod_res_ger = df_prod_raw_gerencia.groupby('Producto')[['Litros Procesados', 'PT_Total']].sum().reset_index()
-        for idx, row in prod_res_ger.iterrows():
-            ratio_prod = (row['PT_Total'] / row['Litros Procesados'] * 100) if row['Litros Procesados'] > 0 else 0
-            txt_linea = f"- {row['Producto']}: Litros Proc. {formato_miles(row['Litros Procesados'])} | Prod. Terminado: {formato_miles(row['PT_Total'])} | Ratio: {ratio_prod:.2f}%"
-            pdf.cell(190, 4.5, txt=txt_linea, ln=True)
-            
-        pdf.ln(5)
-        
-        pdf.set_font("Arial", 'B', 10)
-        pdf.cell(190, 5, txt="Detalle de Lotes", ln=True, align='L')
-        pdf.ln(2)
-        
-        pdf.set_font("Arial", 'B', 7)
-        anchos = [20, 28, 42, 32, 38, 30]
-        columnas = dataframe_gerencia.columns.tolist()
-        for i in range(len(columnas)): pdf.cell(anchos[i], 7, columnas[i], border=1, align='C')
-        pdf.ln()
-        
-        pdf.set_font("Arial", '', 7)
-        for index, row in dataframe_gerencia.iterrows():
-            # Corregido: la fecha aquí ya viene formateada como string si usamos df_disp, 
-            # pero dataframe_gerencia es df_consolidado (fechas datetime).
-            if isinstance(row['Fecha'], pd.Timestamp):
-                fecha_str = row['Fecha'].strftime('%d/%m/%Y')
-            else:
-                fecha_str = str(row['Fecha'])
-                
-            pdf.cell(anchos[0], 6, fecha_str, border=1, align='C')
-            pdf.cell(anchos[1], 6, str(row['Lote']), border=1, align='C')
-            pdf.cell(anchos[2], 6, str(row['Producto']), border=1, align='L')
-            pdf.cell(anchos[3], 6, formato_miles(row['Litros Procesados']), border=1, align='R')
-            pdf.cell(anchos[4], 6, formato_miles(row['Producto Terminado']), border=1, align='R')
-            pdf.cell(anchos[5], 6, str(row['Ratio de Conversión (%)']), border=1, align='C')
-            pdf.ln()
-            
-        output = pdf.output(dest='S')
-        if isinstance(output, bytearray): return bytes(output)
-        elif isinstance(output, str): return output.encode('latin1')
-        return output
-
-    if len(df_consolidado) > 0:
-        df_gerencia_raw_pdf = df_prod_coop.copy()
-        if filtro_anio_coop != "Todos": df_gerencia_raw_pdf = df_gerencia_raw_pdf[df_gerencia_raw_pdf['Año'] == int(filtro_anio_coop)]
-        if filtro_mes_coop != "Todos": df_gerencia_raw_pdf = df_gerencia_raw_pdf[df_gerencia_raw_pdf['Mes'] == int(filtro_mes_coop)]
-        df_gerencia_raw_pdf['PT_Total'] = df_gerencia_raw_pdf['Producto Terminado'] + df_gerencia_raw_pdf['PNC']
-
-        titulo_pdf = f"Reporte Coopagro {filtro_mes_coop}-{filtro_anio_coop}"
-        pdf_bytes = generar_pdf_coopagro(df_consolidado, titulo_pdf, total_litros_ingresados, rendimiento_ingreso, ratio_ponderado, df_gerencia_raw_pdf)
-        
-        st.download_button(label="📄 Descargar Reporte en PDF", data=pdf_bytes, file_name=f"{titulo_pdf.replace(' ', '_')}.pdf", mime="application/pdf")
-
-  except Exception as e:
-    st.error("Se produjo un error procesando los datos de Coopagro:")
-    st.code(traceback.format_exc())
 
 # =========================================================================
 # MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS (CONECTADO A FORMS VIA CSV)
