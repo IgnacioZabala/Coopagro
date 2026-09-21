@@ -719,7 +719,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (ACTUALIZADO CON RATIO PROCESADOS/PT)
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (ACTUALIZADO)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -750,16 +750,28 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
           
       def clasificar_lote(lote):
           lote_str = str(lote).upper()
-          if "840" in lote_str:
-              return "Muzzarella Mastellone", "Mastellone"
-          elif "488" in lote_str:
-              return "Tybo Coopagro", "Coopagro"
-          elif "125" in lote_str:
-              return "Muzzarella Piano", "Coopagro"
-          elif "288" in lote_str:
-              return "Muzzarella Exportacion Coop.", "Coopagro"
+          if len(lote_str) >= 8:
+              prod_code = lote_str[5:8]
           else:
-              return f"Otro Prod. ({lote_str[5:8] if len(lote_str)>8 else 'N/A'})", "Coopagro" 
+              prod_code = ""
+
+          mapping_prod = {
+              "288": "Muzzarella Exportacion Coop.",
+              "125": "Muzarrella Piano",
+              "488": "Tybo Coop.",
+              "840": "Muzzarella Exportacion Mastellone",
+          }
+          mapping_grupo = {
+              "288": "Coopagro", "125": "Coopagro", "488": "Coopagro", "840": "Mastellone",
+          }
+          
+          # Si el código no está en el mapa pero empieza con 'I' o 'H' y no es 840, lo tratamos como Coopagro por defecto
+          if prod_code in mapping_prod:
+              return mapping_prod[prod_code], mapping_grupo[prod_code]
+          elif lote_str.startswith("I") or lote_str.startswith("H"):
+              return f"Producto Coopagro ({prod_code})", "Coopagro"
+          else:
+              return f"Otro Prod. ({prod_code})", "Otro"
 
       if len(df_prod) > 0: 
           df_prod["Producto"] = df_prod["Lote"].apply(lambda x: clasificar_lote(x)[0])
