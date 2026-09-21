@@ -157,7 +157,7 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   
   if os.path.exists("logo.png"):
     # Logo arriba y compacto
-    pdf.image("logo.png", x=89, y=8, w=45)
+    pdf.image("logo.png", x=89, y=8, w=65)
     # Bajamos el cursor marcadamente para que el texto arranque mucho más abajo
     pdf.set_y(50)
   else:
