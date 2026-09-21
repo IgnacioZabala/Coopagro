@@ -719,7 +719,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (ACTUALIZADO)
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (ACTUALIZADO CON LETRA DE MES)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -749,11 +749,16 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
           df_prod[col] = pd.to_numeric(df_prod[col], errors='coerce').fillna(0)
           
       def clasificar_lote(lote):
-          lote_str = str(lote).upper()
-          if len(lote_str) >= 8:
-              prod_code = lote_str[5:8]
-          else:
-              prod_code = ""
+          lote_str = str(lote).strip().upper()
+          if not lote_str:
+              return "Desconocido", "Otro"
+
+          # 1. Extraer mes por la letra inicial (A=1, B=2, ..., H=8, I=9, etc.)
+          primera_letra = lote_str[0]
+          mes_por_letra = ord(primera_letra) - 64 if primera_letra.isalpha() else None
+
+          # 2. Extraer código de producto (dígitos centrales, ej: 288, 125, 488, 840)
+          prod_code = lote_str[5:8] if len(lote_str) >= 8 else ""
 
           mapping_prod = {
               "288": "Muzzarella Exportacion Coop.",
@@ -761,17 +766,18 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
               "488": "Tybo Coop.",
               "840": "Muzzarella Exportacion Mastellone",
           }
-          mapping_grupo = {
-              "288": "Coopagro", "125": "Coopagro", "488": "Coopagro", "840": "Mastellone",
-          }
           
-          # Si el código no está en el mapa pero empieza con 'I' o 'H' y no es 840, lo tratamos como Coopagro por defecto
           if prod_code in mapping_prod:
-              return mapping_prod[prod_code], mapping_grupo[prod_code]
-          elif lote_str.startswith("I") or lote_str.startswith("H"):
-              return f"Producto Coopagro ({prod_code})", "Coopagro"
-          else:
-              return f"Otro Prod. ({prod_code})", "Otro"
+              if prod_code == "840":
+                  return mapping_prod[prod_code], "Mastellone"
+              else:
+                  return mapping_prod[prod_code], "Coopagro"
+          
+          # Fallback general para cualquier lote válido de Coopagro basado en su letra de mes
+          if mes_por_letra and 1 <= mes_por_letra <= 12:
+              return f"Producto Coopagro ({prod_code if prod_code else 'Genérico'})", "Coopagro"
+              
+          return f"Otro Prod. ({prod_code})", "Otro"
 
       if len(df_prod) > 0: 
           df_prod["Producto"] = df_prod["Lote"].apply(lambda x: clasificar_lote(x)[0])
