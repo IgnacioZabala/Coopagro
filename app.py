@@ -719,7 +719,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (EXCLUSIVO COOPAGRO)
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (CORREGIDO Y OPTIMIZADO)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -750,23 +750,28 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
           
       def clasificar_lote_coopagro(lote):
           lote_str = str(lote).strip().upper()
-          if len(lote_str) >= 8:
-              prod_code = lote_str[5:8]
-          else:
-              prod_code = ""
+          if len(lote_str) < 8:
+              return "Desconocido", "Otro"
 
-          # Mapeo exclusivo de productos de Coopagro (excluyendo 840 de Mastellone)
+          prod_code = lote_str[5:8]
+
+          # Exclusión estricta de lotes de Mastellone (Fasón)
+          if prod_code == "840":
+              return "Muzzarella Exportacion Mastellone", "Mastellone"
+
           mapping_prod = {
               "288": "Muzzarella Exportacion Coop.",
               "125": "Muzarrella Piano",
               "488": "Tybo Coop.",
           }
           
-          if prod_code in mapping_prod:
+          # Si está en el mapeo conocido de Coopagro
+          if prod_code in mapping_mapping if 'mapping_mapping' in locals() else prod_code in mapping_prod:
               return mapping_prod[prod_code], "Coopagro"
           
-          # Si es cualquier otro código que pertenezca a Coopagro (y no sea Mastellone 840)
-          if prod_code != "840" and (lote_str.startswith("H") or lote_str.startswith("I") or lote_str.startswith("J")):
+          # Si comienza con letra de mes válida (ej. H para agosto, I para septiembre) y no es Mastellone
+          primera_letra = lote_str[0]
+          if primera_letra.isalpha() and prod_code != "840":
               return f"Producto Coopagro ({prod_code})", "Coopagro"
               
           return f"Otro Prod. ({prod_code})", "Otro"
