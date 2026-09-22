@@ -491,6 +491,49 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.header("🚛 Recepción, Calidad y Producción Mastellone (Fasón)")
   import datetime
   now = datetime.datetime.now()
+
+  # --- Función exclusiva para imprimir PDF de Mastellone sin logo ---
+  def generar_pdf_mastellone_sin_logo(titulo, subtitulo, metricas, headers, df_datos, filas_mapeo, usable_width=190):
+      from fpdf import FPDF
+      pdf = FPDF(orientation="P", unit="mm", format="A4")
+      pdf.set_auto_page_break(auto=True, margin=15)
+      pdf.add_page()
+      
+      # Forzamos el margen superior sin espacio para el logo
+      pdf.set_y(20)
+      pdf.set_font("Arial", "B", 12)
+      pdf.cell(0, 6, titulo, ln=True, align="C")
+      pdf.ln(2)
+      pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+      pdf.ln(4)
+
+      pdf.set_font("Arial", "B", 11)
+      pdf.cell(0, 7, subtitulo, ln=True)
+      pdf.set_font("Arial", "", 10)
+      for metrica in metricas: pdf.cell(0, 6, metrica, ln=True)
+
+      pdf.ln(6)
+      pdf.set_font("Arial", "B", 8)
+      pdf.set_fill_color(200, 220, 255)
+
+      suma_anchos = sum([w for _, w in headers])
+      factor = usable_width / suma_anchos if suma_anchos > 0 else 1.0
+      headers_ajustados = [(name, w * factor) for name, w in headers]
+
+      for i, (col_name, col_w) in enumerate(headers_ajustados):
+          pdf.cell(col_w, 8, col_name, 1, 1 if i == len(headers_ajustados) - 1 else 0, "C", fill=True)
+
+      pdf.set_font("Arial", "", 8)
+      for row in df_datos.itertuples(index=False):
+          for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
+              val = fn_mapeo(row)
+              align = "L" if "Nombre" in headers_ajustados[i][0] or "Producto" in headers_ajustados[i][0] else "C"
+              pdf.cell(col_w, 7, str(val), 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
+
+      output = pdf.output(dest="S")
+      if isinstance(output, bytearray): return bytes(output)
+      elif isinstance(output, str): return output.encode('latin1')
+      return output
   
   try:
     with st.spinner("Sincronizando datos de Mastellone..."):
@@ -598,10 +641,17 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     filtro_anio = st.sidebar.selectbox("Año", opciones_anio, index=opciones_anio.index(now.year) if now.year in opciones_anio else 0, key="m_anio_mastellone")
     filtro_mes = st.sidebar.selectbox("Mes", ["Todos"] + list(range(1, 13)), index=now.month, key="m_mes_mastellone")
 
+    # FILTRAMOS PRODUCCION
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
       if filtro_anio != "Todos": df_filtrado = df_filtrado[df_filtrado["Año"] == filtro_anio]
       if filtro_mes != "Todos": df_filtrado = df_filtrado[df_filtrado["Mes"] == filtro_mes]
+
+    # FILTRAMOS RECEPCION (MHSA) ANTES DE SUMAR
+    df_mhsa_f = df_mhsa.copy()
+    if not df_mhsa_f.empty:
+      if filtro_anio != "Todos": df_mhsa_f = df_mhsa_f[df_mhsa_f["Año"] == filtro_anio]
+      if filtro_mes != "Todos": df_mhsa_f = df_mhsa_f[df_mhsa_f["Mes"] == filtro_mes]
 
     df_consolidado = pd.DataFrame()
     if len(df_filtrado) > 0:
@@ -610,7 +660,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_c_raw["Ratio"] = df_c_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
       df_consolidado = df_c_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio": "Ratio de Conversión (%)"})
 
-    total_litros_ingresados = df_mhsa["Litros_Ticket"].sum() if not df_mhsa.empty else 0.0
+    # TOTALES DINÁMICOS
+    total_litros_ingresados = df_mhsa_f["Litros_Ticket"].sum() if not df_mhsa_f.empty else 0.0
     total_litros_proc = df_filtrado["Litros Procesados"].sum() if len(df_filtrado) > 0 else 0
     total_prod_consolidado = df_consolidado["Producto Terminado"].sum() if not df_consolidado.empty else 0
     ratio_ponderado = (total_prod_consolidado / total_litros_proc * 100) if total_litros_proc > 0 else 0
@@ -627,11 +678,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     
     with tab1:
         st.subheader("Recepción y Calidad de Tambos Mastellone")
-        df_mhsa_f = df_mhsa.copy()
         if not df_mhsa_f.empty:
-            if filtro_anio != "Todos": df_mhsa_f = df_mhsa_f[df_mhsa_f["Año"] == filtro_anio]
-            if filtro_mes != "Todos": df_mhsa_f = df_mhsa_f[df_mhsa_f["Mes"] == filtro_mes]
-            
             df_m_disp = df_mhsa_f.sort_values(by=["Fecha", "Num_Tambo"]).copy()
             df_m_disp["Fecha"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
             df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
@@ -648,6 +695,28 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 if col_extra in df_m_disp: cols.append(col_extra)
             
             st.dataframe(df_m_disp[cols], use_container_width=True, hide_index=True)
+
+            # --- BOTÓN PARA IMPRIMIR PDF DE RECEPCIÓN (MHSA) ---
+            st.markdown("---")
+            # Renombramos temporalmente para evitar problemas de getattr con acentos
+            df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia"})
+            
+            headers_pdf_rec = [("Fecha", 25), ("Tambo", 70), ("Litros", 25), ("Temp", 20), ("Grasa", 25), ("Proteina", 25)]
+            mapeo_pdf_rec = [
+                lambda r: r.Fecha if pd.notna(r.Fecha) else "",
+                lambda r: str(r.Tambo)[:25],
+                lambda r: str(r.Litros),
+                lambda r: str(getattr(r, "Temperatura", "-")),
+                lambda r: str(getattr(r, "Grasa", "-")),
+                lambda r: str(getattr(r, "Proteina", "-"))
+            ]
+            
+            mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
+            subt_rec = f"Período: {mes_str} {filtro_anio}"
+            metricas_rec = [f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L"]
+            
+            pdf_rec_bytes = generar_pdf_mastellone_sin_logo("Reporte de Recepción y Calidad MHSA", subt_rec, metricas_rec, headers_pdf_rec, df_pdf_rec, mapeo_pdf_rec)
+            st.download_button("📥 Descargar Reporte Recepción PDF", data=pdf_rec_bytes, file_name="Reporte_Recepcion_MHSA.pdf", mime="application/pdf")
         else:
             st.info("No hay registros de recepción MHSA para el período seleccionado.")
 
@@ -660,28 +729,37 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_c_disp["Producto Terminado"] = df_c_disp["Producto Terminado"].apply(formato_miles)
             st.dataframe(df_c_disp, use_container_width=True, hide_index=True)
             
+            # --- BOTÓN DE PDF ACTUALIZADO CON RENDIMIENTO DE INGRESOS ---
             headers_pdf = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Ratio", 15)]
             mapeo_pdf = [
-                lambda r: r.Fecha.strftime("%d/%m/%Y") if pd.notna(r.Fecha) else "",
+                lambda r: r.Fecha if pd.notna(r.Fecha) else "",
                 lambda r: str(r.Lote),
                 lambda r: str(r.Producto),
-                lambda r: formato_miles(r.Litros_Procesados),
-                lambda r: formato_miles(r.Producto_Terminado),
+                lambda r: str(r.Litros_Procesados),
+                lambda r: str(r.Producto_Terminado),
                 lambda r: str(r.Ratio_Conversion)
             ]
 
-            # itertuples() no soporta .get() y los nombres con espacios se pierden como atributos,
-            # por eso renombramos antes de generar el PDF (igual que se hace en el Módulo 3).
-            df_consolidado_pdf = df_consolidado.rename(columns={
+            df_consolidado_pdf = df_c_disp.rename(columns={
                 "Litros Procesados": "Litros_Procesados",
                 "Producto Terminado": "Producto_Terminado",
                 "Ratio de Conversión (%)": "Ratio_Conversion",
             })
 
+            ratio_ingresados = (total_prod_consolidado / total_litros_ingresados * 100) if total_litros_ingresados > 0 else 0
             mes_nombre_m = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
             subt_mast = f"Período: {mes_nombre_m} {filtro_anio}"
-            pdf_mast_bytes = generar_pdf_base("Reporte de Producción Fasón - Mastellone", subt_mast, [f"Total Litros Procesados: {formato_miles(total_litros_proc)} L"], headers_pdf, df_consolidado_pdf, mapeo_pdf)
-            st.download_button("📥 Descargar Reporte PDF Mastellone", data=pdf_mast_bytes, file_name="Reporte_Produccion_Mastellone.pdf", mime="application/pdf")
+            
+            metricas_prod = [
+                f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L",
+                f"Total Litros Procesados: {formato_miles(total_litros_proc)} L",
+                f"Total Producto Terminado: {formato_miles(total_prod_consolidado)} kg",
+                f"Rendimiento (PT / Procesados): {ratio_ponderado:.2f}%",
+                f"Rendimiento (PT / Ingresados): {ratio_ingresados:.2f}%"
+            ]
+            
+            pdf_mast_bytes = generar_pdf_mastellone_sin_logo("Reporte de Producción Fasón - Mastellone", subt_mast, metricas_prod, headers_pdf, df_consolidado_pdf, mapeo_pdf)
+            st.download_button("📥 Descargar Reporte Producción PDF", data=pdf_mast_bytes, file_name="Reporte_Produccion_Mastellone.pdf", mime="application/pdf")
         else:
             st.info("No hay producción de lotes Mastellone para el período seleccionado.")
 
