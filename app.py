@@ -154,12 +154,12 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   pdf.add_page()
   
   logo_y = 8
-  logo_w = 45  # Ancho fijo en mm. Al no pasar 'h', FPDF calcula la altura manteniendo el ratio original.
+  logo_w = 50  # Ancho fijo en mm. Al no pasar 'h', FPDF calcula la altura manteniendo el ratio original.
   
   if os.path.exists("logo.png"):
     pdf.image("logo.png", x=(210 - logo_w) / 2, y=logo_y, w=logo_w)
     # Posicionamiento dinámico: logo_y + altura estimada proporcional + margen de separación (8mm)
-    pdf.set_y(logo_y + 16 + 8)
+    pdf.set_y(logo_y + 30 + 12)
   else:
     pdf.set_y(20)
 
