@@ -293,30 +293,32 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     df = df.dropna(subset=["Fecha"])
     for col in ["Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]:
       if col not in df.columns: df[col] = pd.NA
-    df = df.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
-    df["orden_remito"] = df.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
 
     # Procesamiento Lab
     if not df_lab_raw.empty:
       df_lab = df_lab_raw.copy()
       col_sample = next((c for c in df_lab.columns if any(x in c.lower() for x in ["sample", "number", "tambo", "muestra"])), df_lab.columns[0])
-      col_date = next((c for c in df_lab.columns if any(x in c.lower() for x in ["fecha", "date", "time"])), None)
       df_lab["Num_Tambo"] = df_lab[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-      if col_date and df_lab[col_date].notna().any(): df_lab["Fecha"] = pd.to_datetime(df_lab[col_date], errors="coerce").dt.normalize()
-      else: df_lab["Fecha"] = df_lab[col_sample].apply(lambda x: extraer_fecha_texto(x) if pd.notna(x) else pd.NaT)
-      df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"]).sort_values(by=["Num_Tambo", "Fecha"])
-      df_lab["orden_remito"] = df_lab.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
+      df_lab["Fecha_Extraida"] = pd.to_datetime(df_lab[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
+      col_date = next((c for c in df_lab.columns if any(x in c.lower() for x in ["fecha", "date", "time", "analyzed"])), None)
+      df_lab["Fecha"] = df_lab["Fecha_Extraida"].fillna(pd.to_datetime(df_lab[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
+      df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
+      
+      # AISLAMIENTO MUESTRA 1: Se ordena por el string de muestra (T7346 1 queda antes que T7346 2) y eliminamos duplicados
+      df_lab = df_lab.sort_values(by=[col_sample]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      
       map_cols = {}
       col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
-      if col_fat: map_cols[col_fat] = "Grasa_Lab"
       col_prot = next((c for c in df_lab.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
-      if col_prot: map_cols[col_prot] = "Proteina_Lab"
       col_fp = next((c for c in df_lab.columns if c.lower() == "fp" or "crios" in c.lower()), None)
+      if col_fat: map_cols[col_fat] = "Grasa_Lab"
+      if col_prot: map_cols[col_prot] = "Proteina_Lab"
       if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
+      
       if map_cols:
-        df_milko_clean = df_lab[["Num_Tambo", "Fecha", "orden_remito"] + list(map_cols.keys())].rename(columns=map_cols)
+        df_milko_clean = df_lab[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
         for c in map_cols.values(): df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-        df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
+        df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
         if "Grasa_Lab" in df: df["Grasa"] = df["Grasa_Lab"].combine_first(df["Grasa"])
         if "Proteina_Lab" in df: df["Proteina"] = df["Proteina_Lab"].combine_first(df["Proteina"])
         if "Crioscopia_Lab" in df: df["Crioscopia"] = df["Crioscopia_Lab"].combine_first(df["Crioscopia"])
@@ -326,18 +328,24 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_bac = df_bac_raw.copy()
       col_id = next((c for c in df_bac.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac.columns[0])
       df_bac["Num_Tambo"] = df_bac[col_id].astype(str).str.split().str[0].apply(limpiar_tambo)
-      df_bac["Fecha"] = df_bac[col_id].apply(lambda x: extraer_fecha_texto(x) if pd.notna(x) else pd.NaT)
-      df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"]).sort_values(by=["Num_Tambo", "Fecha"])
-      df_bac["orden_remito"] = df_bac.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
+      df_bac["Fecha_Extraida"] = pd.to_datetime(df_bac[col_id].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
+      col_date_bac = next((c for c in df_bac.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
+      df_bac["Fecha"] = df_bac["Fecha_Extraida"].fillna(pd.to_datetime(df_bac[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
+      df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
+      
+      # AISLAMIENTO MUESTRA 1
+      df_bac = df_bac.sort_values(by=[col_id]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      
       map_cols_bac = {}
       col_ufc = next((c for c in df_bac.columns if "ufc" in c.lower()), None)
-      if col_ufc: map_cols_bac[col_ufc] = "UFC_Val"
       col_scc = next((c for c in df_bac.columns if any(x in c.lower() for x in ["scc", "celulas", "somáticas"])), None)
+      if col_ufc: map_cols_bac[col_ufc] = "UFC_Val"
       if col_scc: map_cols_bac[col_scc] = "SCC_Val"
+      
       if map_cols_bac:
-        df_bac_clean = df_bac[["Num_Tambo", "Fecha", "orden_remito"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
+        df_bac_clean = df_bac[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
         for c in map_cols_bac.values(): df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-        df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
+        df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
         if "UFC_Val" in df: df["UFC"] = df["UFC_Val"].combine_first(df["UFC"])
         if "SCC_Val" in df: df["SCC"] = df["SCC_Val"].combine_first(df["SCC"])
 
@@ -345,6 +353,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     df["Fecha_Inicio_Sabado"] = df["Fecha_Cierre_Viernes"] - pd.Timedelta(days=6)
     df["Ciclo_Semana"] = "Viernes " + df["Fecha_Cierre_Viernes"].dt.strftime("%d/%m/%Y") + " (Sáb " + df["Fecha_Inicio_Sabado"].dt.strftime("%d/%m/%Y") + " al Vie " + df["Fecha_Cierre_Viernes"].dt.strftime("%d/%m/%Y") + ")"
     df["AnioMes"] = df["Fecha"].dt.to_period("M")
+    df = df.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
 
     # Submenú Módulo 1
     st.sidebar.markdown("---")
@@ -460,7 +469,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     st.code(traceback.format_exc())
 
 # =========================================================================
-# MÓDULO 2: RECEPCIÓN Y CALIDAD MASTELLONE (FASÓN) - TOTALMENTE CORREGIDO
+# MÓDULO 2: RECEPCIÓN Y CALIDAD MASTELLONE (FASÓN) - CORREGIDO
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.header("🚛 Recepción, Calidad y Producción Mastellone (Fasón)")
@@ -469,7 +478,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   
   try:
     with st.spinner("Sincronizando datos de Mastellone..."):
-      # 1. Cargar Producción Fasón (Lotes con código 840)
       raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
@@ -493,7 +501,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Mes"] = df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # 2. Cargar Recepción Hoja 2 (MHSA) del archivo Mastellone
       xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
       sheet_mhsa = next((s for s in xls_mastellone.sheet_names if "mhsa" in s.lower()), xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0])
       df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
@@ -509,21 +516,22 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
       df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
       df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
-      df_mhsa = df_mhsa.sort_values(by=["Num_Tambo", "Fecha"])
-      df_mhsa["orden_remito"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
 
-      # 3. Enriquecer con Laboratorio (MilkoScan y Bacsomatic)
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
+      # MilkoScan
       if not df_lab_raw.empty:
           df_lab_m = df_lab_raw.copy()
           col_sample = df_lab_m.columns[0]
+          
           df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
           df_lab_m["Fecha_Extraida"] = pd.to_datetime(df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
           col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
           df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(pd.to_datetime(df_lab_m[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
-          df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"]).sort_values(by=["Num_Tambo", "Fecha"])
-          df_lab_m["orden_remito"] = df_lab_m.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
+          df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
+          
+          # AISLAMIENTO MUESTRA 1: Se ordena por el string de muestra (T7346 1 queda antes que T7346 2) y eliminamos duplicados
+          df_lab_m = df_lab_m.sort_values(by=[col_sample]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
           
           map_cols = {}
           col_fat = next((c for c in df_lab_m.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
@@ -534,20 +542,24 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
           
           if map_cols:
-              df_milko_clean = df_lab_m[["Num_Tambo", "Fecha", "orden_remito"] + list(map_cols.keys())].rename(columns=map_cols)
+              df_milko_clean = df_lab_m[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
               for c in map_cols.values(): 
                   df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-              df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
+              df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
 
+      # Bacsomatic
       if not df_bac_raw.empty:
           df_bac_m = df_bac_raw.copy()
           col_sample_bac = df_bac_m.columns[5] if len(df_bac_m.columns) > 5 else df_bac_m.columns[0]
+          
           df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
           df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
           col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
           df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
-          df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"]).sort_values(by=["Num_Tambo", "Fecha"])
-          df_bac_m["orden_remito"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
+          df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
+          
+          # AISLAMIENTO MUESTRA 1
+          df_bac_m = df_bac_m.sort_values(by=[col_sample_bac]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
           
           map_cols_bac = {}
           col_ufc = next((c for c in df_bac_m.columns if "ufc" in c.lower()), None)
@@ -556,10 +568,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           if col_scc: map_cols_bac[col_scc] = "SCC_Val"
           
           if map_cols_bac:
-              df_bac_clean = df_bac_m[["Num_Tambo", "Fecha", "orden_remito"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
+              df_bac_clean = df_bac_m[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
               for c in map_cols_bac.values(): 
                   df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-              df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
+              df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
 
     st.sidebar.subheader("Filtros Mastellone")
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
@@ -652,7 +664,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO - CORREGIDO (INCLUYE 9/9)
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -686,7 +698,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       df_prod['Mes'] = df_prod['Fecha'].dt.month
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
-      # Cargar Recepción Coopagro
       url_recibo_limpia = f"{URL_REMITOS}&t={int(time.time())}"
       raw_recibo = pd.read_excel(url_recibo_limpia)
       df_recibo = pd.DataFrame()
@@ -740,7 +751,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         
         st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']], use_container_width=True, hide_index=True)
         
-        # Botón de Descarga PDF para Producción Coopagro
         headers_pdf_c = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Rend.", 15)]
         mapeo_pdf_c = [
             lambda r: r.Fecha if pd.notna(r.Fecha) else "",
