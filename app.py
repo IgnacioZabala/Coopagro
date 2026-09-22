@@ -780,7 +780,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
             lambda r: str(r.Rendimiento_Lote)
         ]
         
-        # Conversión del mes numérico (ej. 8) al nombre en español (ej. Agosto)
         mes_nombre_pdf = MESES_ES.get(f_mes_p, str(f_mes_p)) if f_mes_p != "Todos" else "Todos los meses"
         anio_pdf = str(f_anio_p) if f_anio_p != "Todos" else "General"
         subtitulo_periodo = f"Período: {mes_nombre_pdf} {anio_pdf}" if f_mes_p != "Todos" else f"Período: Año {anio_pdf}"
@@ -795,7 +794,12 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         
         df_pdf_prep = df_p_show.rename(columns={"Litros Procesados": "Litros_Procesados", "Producto Terminado": "Producto_Terminado", "Rendimiento Lote": "Rendimiento_Lote"})
         pdf_coop_bytes = generar_pdf_base("Reporte de Producción y Rendimiento - Coopagro", subtitulo_periodo, metricas_pdf_coop, headers_pdf_c, df_pdf_prep, mapeo_pdf_c)
-        st.download_button("📥 Descargar Reporte PDF Coopagro", data=pdf_coop_bytes, file_name=f"Reporte_Produccion_Coopagro_{mes_nombre_pdf}_{anio_pdf}.pdf", mime="application/pdf")
+        
+        # Nombre de archivo con el número de mes adelante (ej: 8- Reporte de Producción Coopagro Agosto 2026.pdf)
+        prefijo_nombre = f"{f_mes_p}- " if f_mes_p != "Todos" else "General - "
+        nombre_archivo_pdf = f"{prefijo_nombre}Reporte de Producción Coopagro {mes_nombre_pdf} {anio_pdf}.pdf"
+        
+        st.download_button("📥 Descargar Reporte PDF Coopagro", data=pdf_coop_bytes, file_name=nombre_archivo_pdf, mime="application/pdf")
     else:
         st.info("No hay registros de producción para el período seleccionado.")
 
