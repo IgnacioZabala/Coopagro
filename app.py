@@ -128,11 +128,8 @@ def clasificar_lote_general(lote_str):
       "488": "Tybo Coop.",
       "840": "Muzzarella Exportacion Mastellone",
   }
-  mapping_grupo = {
-      "288": "Coopagro", "125": "Coopagro", "488": "Coopagro", "840": "Mastellone",
-  }
   prod_nombre = mapping_prod.get(prod_code, f"Producto ({prod_code})")
-  grupo = mapping_grupo.get(prod_code, "Coopagro" if prod_code != "840" else "Mastellone")
+  grupo = "Mastellone" if prod_code == "840" else "Coopagro"
   return prod_nombre, grupo
 
 # =========================================================================
@@ -292,7 +289,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     df = df_raw.iloc[:, :10].copy()
     df.columns = ["Fecha", "N_Remito", "Num_Tambo", "Tambo", "Litros_Ticket", "Litros_Planilla", "Diferencia", "Temperatura", "Grasa", "Proteina"]
     df["Num_Tambo"] = df["Num_Tambo"].apply(limpiar_tambo)
-    df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.normalize()
+    df["Fecha"] = pd.to_datetime(df["Fecha"], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
     df = df.dropna(subset=["Fecha"])
     for col in ["Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]:
       if col not in df.columns: df[col] = pd.NA
@@ -463,7 +460,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     st.code(traceback.format_exc())
 
 # =========================================================================
-# MÓDULO 2: RECEPCIÓN Y CALIDAD MASTELLONE (FASÓN) - OPTIMIZADO
+# MÓDULO 2: RECEPCIÓN Y CALIDAD MASTELLONE (FASÓN) - TOTALMENTE CORREGIDO
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.header("🚛 Recepción, Calidad y Producción Mastellone (Fasón)")
@@ -472,6 +469,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   
   try:
     with st.spinner("Sincronizando datos de Mastellone..."):
+      # 1. Cargar Producción Fasón (Lotes con código 840)
       raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
@@ -479,7 +477,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Litros Procesados"] = raw_prod.iloc[:, 3]
       df_prod["Producto Terminado"] = raw_prod.iloc[:, 5]
       df_prod["PNC"] = raw_prod.iloc[:, 6]
-      df_prod = df_prod.dropna(subset=["Fecha"])
+      df_prod = df_prod.dropna(subset=["Fecha", "Lote"])
       
       df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], format="mixed", dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
@@ -495,29 +493,26 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Mes"] = df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      # Cruce Hoja 2 (MHSA)
-      df_mhsa = pd.DataFrame()
+      # 2. Cargar Recepción Hoja 2 (MHSA) del archivo Mastellone
       xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
-      sheet_mhsa = xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0]
+      sheet_mhsa = next((s for s in xls_mastellone.sheet_names if "mhsa" in s.lower()), xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0])
       df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
       
-      df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, 0]
-      df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2]
+      df_mhsa = pd.DataFrame()
+      df_mhsa["Fecha"] = pd.to_datetime(df_mhsa_raw.iloc[:, 0], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
+      df_mhsa["N_Remito"] = df_mhsa_raw.iloc[:, 1]
+      df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2].apply(limpiar_tambo)
       df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
-      df_mhsa["Litros_Ticket"] = df_mhsa_raw.iloc[:, 4]
-      df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, 7] if len(df_mhsa_raw.columns) > 7 else pd.NA
+      df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa_raw.iloc[:, 4], errors="coerce").fillna(0)
+      df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa_raw.iloc[:, 7] if len(df_mhsa_raw.columns) > 7 else pd.NaT, errors="coerce")
       
-      df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
-      df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
       df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
-      df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa["Litros_Ticket"], errors="coerce").fillna(0)
-      df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa["Temperatura"], errors="coerce")
-      
       df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
       df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
+      df_mhsa = df_mhsa.sort_values(by=["Num_Tambo", "Fecha"])
       df_mhsa["orden_remito"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
 
-      # Enriquecimiento Laboratorio (MilkoScan y Bacsomatic) para Mastellone
+      # 3. Enriquecer con Laboratorio (MilkoScan y Bacsomatic)
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
       if not df_lab_raw.empty:
@@ -597,7 +592,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     c2.metric("Litros Procesados", formato_miles(total_litros_proc))
     c3.metric("Total Producto Terminado", formato_miles(total_prod_consolidado))
     
-    c4, c5, _ = st.columns(3)
+    c4, _, _ = st.columns(3)
     c4.metric("Ratio PT / Procesados", f"{ratio_ponderado:.2f}%")
 
     tab1, tab2 = st.tabs(["📑 Recepción y Calidad (MHSA)", "🏭 Producción Fasón"])
@@ -611,7 +606,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             
             df_m_disp = df_mhsa_f.sort_values(by=["Fecha", "Num_Tambo"]).copy()
             df_m_disp["Fecha"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
-            df_m_disp["Litros_Ticket"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
+            df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
             df_m_disp["Temperatura"] = df_m_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
             if "Grasa_Lab" in df_m_disp: df_m_disp["Grasa"] = df_m_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
@@ -620,16 +615,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "UFC_Val" in df_m_disp: df_m_disp["UFC"] = df_m_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC_Val" in df_m_disp: df_m_disp["SCC"] = df_m_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
-            cols = ["Fecha", "Num_Tambo", "Tambo", "Litros_Ticket", "Temperatura"]
+            cols = ["Fecha", "Num_Tambo", "Tambo", "Litros", "Temperatura"]
             for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]:
                 if col_extra in df_m_disp: cols.append(col_extra)
             
-            rename_cols = {"Litros_Ticket": "Litros"}
-existing_rename = {k: v for k, v in rename_cols.items() if k in df_m_disp.columns}
-df_temp = df_m_disp.rename(columns=existing_rename)
-
-valid_cols = [c for c in cols if c in df_temp.columns]
-st.dataframe(df_temp[valid_cols], use_container_width=True, hide_index=True)
+            st.dataframe(df_m_disp[cols], use_container_width=True, hide_index=True)
         else:
             st.info("No hay registros de recepción MHSA para el período seleccionado.")
 
@@ -662,7 +652,7 @@ st.dataframe(df_temp[valid_cols], use_container_width=True, hide_index=True)
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (CORREGIDO Y OPTIMIZADO)
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO - CORREGIDO (INCLUYE 9/9)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -683,34 +673,15 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       df_prod['PNC'] = raw_prod.iloc[:, 6]
       df_prod = df_prod.dropna(subset=['Fecha', 'Lote'])
       
-      # Conversión robusta de fechas que previene cortes posteriores
+      # Parseo robusto y seguro de fechas (mixed + dayfirst) para capturar desde el 1/9 al 30/9 sin cortes
       df_prod['Fecha'] = pd.to_datetime(df_prod['Fecha'], format="mixed", dayfirst=True, errors='coerce')
       df_prod = df_prod.dropna(subset=['Fecha'])
       
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col], errors='coerce').fillna(0)
 
-      # Clasificación robusta de lotes para Coopagro sin exclusiones prematuras
-      def clasificar_lote_coopagro(lote):
-          lote_str = str(lote).strip().upper()
-          if len(lote_str) < 8: return "Desconocido", "Otro"
-          prod_code = lote_str[5:8]
-          if prod_code == "840": return "Muzzarella Exportacion Mastellone", "Mastellone"
-          
-          mapping_prod = {
-              "288": "Muzzarella Exportacion Coop.",
-              "125": "Muzarrella Piano",
-              "488": "Tybo Coop.",
-          }
-          if prod_code in mapping_prod:
-              return mapping_prod[prod_code], "Coopagro"
-          
-          # Si el lote tiene formato válido de producción y no es Mastellone
-          if lote_str[0].isalpha() and prod_code != "840":
-              return f"Producto Coopagro ({prod_code})", "Coopagro"
-          return f"Otro ({prod_code})", "Otro"
-
-      df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod['Lote'].apply(clasificar_lote_coopagro))
+      # Clasificación correcta que incluye todos los códigos de Coopagro (ej. 288, 125, 488 como Tybo del 9/9)
+      df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod['Lote'].apply(clasificar_lote_general))
       df_prod['Año'] = df_prod['Fecha'].dt.year
       df_prod['Mes'] = df_prod['Fecha'].dt.month
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
