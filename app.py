@@ -146,7 +146,7 @@ def clasificar_lote_general(lote_str):
   return prod_nombre, grupo
 
 # =========================================================================
-# FUNCIONES DE PDF BLINDADAS (Logo Proporcional y Posicionamiento Dinámico)
+# FUNCIONES DE PDF BLINDADAS (Logo y Espaciado Dinámico)
 # =========================================================================
 def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list, df_datos: pd.DataFrame, filas_mapeo: list, usable_width: int = 190):
   pdf = FPDF(orientation="P", unit="mm", format="A4")
@@ -154,11 +154,11 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   pdf.add_page()
   
   logo_y = 8
-  logo_w = 50  # Ancho fijo en mm. Al no pasar 'h', FPDF calcula la altura manteniendo el ratio original.
+  logo_w = 50  # Ancho proporcional en mm
   
   if os.path.exists("logo.png"):
     pdf.image("logo.png", x=(210 - logo_w) / 2, y=logo_y, w=logo_w)
-    # Posicionamiento dinámico: logo_y + altura estimada proporcional + margen de separación (8mm)
+    # Espaciado dinámico seguro para evitar que el título pise el logo
     pdf.set_y(logo_y + 30 + 12)
   else:
     pdf.set_y(20)
@@ -667,7 +667,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 lambda r: formato_miles(r.get("Producto Terminado", 0)),
                 lambda r: str(r.get("Ratio de Conversión (%)", "0%"))
             ]
-            pdf_mast_bytes = generar_pdf_base("Reporte de Producción Fasón - Mastellone", f"Período: {filtro_mes}/{filtro_anio}", [f"Total Litros Procesados: {formato_miles(total_litros_proc)} L"], headers_pdf, df_filtrado, mapeo_pdf)
+            
+            mes_nombre_m = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
+            subt_mast = f"Período: {mes_nombre_m} {filtro_anio}"
+            pdf_mast_bytes = generar_pdf_base("Reporte de Producción Fasón - Mastellone", subt_mast, [f"Total Litros Procesados: {formato_miles(total_litros_proc)} L"], headers_pdf, df_filtrado, mapeo_pdf)
             st.download_button("📥 Descargar Reporte PDF Mastellone", data=pdf_mast_bytes, file_name="Reporte_Produccion_Mastellone.pdf", mime="application/pdf")
         else:
             st.info("No hay producción de lotes Mastellone para el período seleccionado.")
@@ -677,7 +680,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (Con Ratios y PDF Actualizados)
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -777,6 +780,11 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
             lambda r: str(r.Rendimiento_Lote)
         ]
         
+        # Conversión del mes numérico (ej. 8) al nombre en español (ej. Agosto)
+        mes_nombre_pdf = MESES_ES.get(f_mes_p, str(f_mes_p)) if f_mes_p != "Todos" else "Todos los meses"
+        anio_pdf = str(f_anio_p) if f_anio_p != "Todos" else "General"
+        subtitulo_periodo = f"Período: {mes_nombre_pdf} {anio_pdf}" if f_mes_p != "Todos" else f"Período: Año {anio_pdf}"
+
         metricas_pdf_coop = [
             f"Total Litros Ingresados: {formato_miles(tot_ingresados_c)} L",
             f"Total Litros Procesados: {formato_miles(tot_proc_c)} L",
@@ -786,8 +794,8 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         ]
         
         df_pdf_prep = df_p_show.rename(columns={"Litros Procesados": "Litros_Procesados", "Producto Terminado": "Producto_Terminado", "Rendimiento Lote": "Rendimiento_Lote"})
-        pdf_coop_bytes = generar_pdf_base("Reporte de Producción y Rendimiento - Coopagro", f"Período: {f_mes_p}/{f_anio_p}", metricas_pdf_coop, headers_pdf_c, df_pdf_prep, mapeo_pdf_c)
-        st.download_button("📥 Descargar Reporte PDF Coopagro", data=pdf_coop_bytes, file_name="Reporte_Produccion_Coopagro.pdf", mime="application/pdf")
+        pdf_coop_bytes = generar_pdf_base("Reporte de Producción y Rendimiento - Coopagro", subtitulo_periodo, metricas_pdf_coop, headers_pdf_c, df_pdf_prep, mapeo_pdf_c)
+        st.download_button("📥 Descargar Reporte PDF Coopagro", data=pdf_coop_bytes, file_name=f"Reporte_Produccion_Coopagro_{mes_nombre_pdf}_{anio_pdf}.pdf", mime="application/pdf")
     else:
         st.info("No hay registros de producción para el período seleccionado.")
 
