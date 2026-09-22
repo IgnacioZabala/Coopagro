@@ -294,7 +294,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     for col in ["Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]:
       if col not in df.columns: df[col] = pd.NA
 
-    # Procesamiento Lab
+    # Procesamiento Lab (Priorizando Muestra 1 con conversión a string)
     if not df_lab_raw.empty:
       df_lab = df_lab_raw.copy()
       col_sample = next((c for c in df_lab.columns if any(x in c.lower() for x in ["sample", "number", "tambo", "muestra"])), df_lab.columns[0])
@@ -304,8 +304,9 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_lab["Fecha"] = df_lab["Fecha_Extraida"].fillna(pd.to_datetime(df_lab[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
       df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
       
-      # AISLAMIENTO MUESTRA 1: Se ordena por el string de muestra (T7346 1 queda antes que T7346 2) y eliminamos duplicados
-      df_lab = df_lab.sort_values(by=[col_sample]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      # AISLAMIENTO MUESTRA 1 (Convertido a string para evitar errores de tipo)
+      df_lab["_sample_str"] = df_lab[col_sample].astype(str)
+      df_lab = df_lab.sort_values(by=["_sample_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
       
       map_cols = {}
       col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
@@ -323,7 +324,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         if "Proteina_Lab" in df: df["Proteina"] = df["Proteina_Lab"].combine_first(df["Proteina"])
         if "Crioscopia_Lab" in df: df["Crioscopia"] = df["Crioscopia_Lab"].combine_first(df["Crioscopia"])
 
-    # Procesamiento Bacsomatic
+    # Procesamiento Bacsomatic (Priorizando Muestra 1 con conversión a string)
     if not df_bac_raw.empty:
       df_bac = df_bac_raw.copy()
       col_id = next((c for c in df_bac.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac.columns[0])
@@ -333,8 +334,9 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_bac["Fecha"] = df_bac["Fecha_Extraida"].fillna(pd.to_datetime(df_bac[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
       df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
       
-      # AISLAMIENTO MUESTRA 1
-      df_bac = df_bac.sort_values(by=[col_id]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      # AISLAMIENTO MUESTRA 1 (Convertido a string)
+      df_bac["_id_str"] = df_bac[col_id].astype(str)
+      df_bac = df_bac.sort_values(by=["_id_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
       
       map_cols_bac = {}
       col_ufc = next((c for c in df_bac.columns if "ufc" in c.lower()), None)
@@ -519,7 +521,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
-      # MilkoScan
+      # MilkoScan (Priorizando Muestra 1 con conversión segura a string)
       if not df_lab_raw.empty:
           df_lab_m = df_lab_raw.copy()
           col_sample = df_lab_m.columns[0]
@@ -530,8 +532,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(pd.to_datetime(df_lab_m[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
           df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
           
-          # AISLAMIENTO MUESTRA 1: Se ordena por el string de muestra (T7346 1 queda antes que T7346 2) y eliminamos duplicados
-          df_lab_m = df_lab_m.sort_values(by=[col_sample]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+          # AISLAMIENTO MUESTRA 1 (Convertido a string para evitar TypeError)
+          df_lab_m["_sample_str"] = df_lab_m[col_sample].astype(str)
+          df_lab_m = df_lab_m.sort_values(by=["_sample_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
           
           map_cols = {}
           col_fat = next((c for c in df_lab_m.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
@@ -547,7 +550,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
               df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
 
-      # Bacsomatic
+      # Bacsomatic (Priorizando Muestra 1 con conversión segura a string)
       if not df_bac_raw.empty:
           df_bac_m = df_bac_raw.copy()
           col_sample_bac = df_bac_m.columns[5] if len(df_bac_m.columns) > 5 else df_bac_m.columns[0]
@@ -558,8 +561,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
-          # AISLAMIENTO MUESTRA 1
-          df_bac_m = df_bac_m.sort_values(by=[col_sample_bac]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+          # AISLAMIENTO MUESTRA 1 (Convertido a string)
+          df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
+          df_bac_m = df_bac_m.sort_values(by=["_id_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
           
           map_cols_bac = {}
           col_ufc = next((c for c in df_bac_m.columns if "ufc" in c.lower()), None)
@@ -644,7 +648,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_c_disp["Producto Terminado"] = df_c_disp["Producto Terminado"].apply(formato_miles)
             st.dataframe(df_c_disp, use_container_width=True, hide_index=True)
             
-            # Botón de Descarga PDF para Mastellone
             headers_pdf = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Ratio", 15)]
             mapeo_pdf = [
                 lambda r: r.Fecha.strftime("%d/%m/%Y") if pd.notna(r.Fecha) else "",
@@ -685,14 +688,12 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       df_prod['PNC'] = raw_prod.iloc[:, 6]
       df_prod = df_prod.dropna(subset=['Fecha', 'Lote'])
       
-      # Parseo robusto y seguro de fechas (mixed + dayfirst) para capturar desde el 1/9 al 30/9 sin cortes
       df_prod['Fecha'] = pd.to_datetime(df_prod['Fecha'], format="mixed", dayfirst=True, errors='coerce')
       df_prod = df_prod.dropna(subset=['Fecha'])
       
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col], errors='coerce').fillna(0)
 
-      # Clasificación correcta que incluye todos los códigos de Coopagro (ej. 288, 125, 488 como Tybo del 9/9)
       df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod['Lote'].apply(clasificar_lote_general))
       df_prod['Año'] = df_prod['Fecha'].dt.year
       df_prod['Mes'] = df_prod['Fecha'].dt.month
