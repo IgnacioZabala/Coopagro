@@ -624,7 +624,12 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]:
                 if col_extra in df_m_disp: cols.append(col_extra)
             
-            st.dataframe(df_m_disp.rename(columns={"Litros_Ticket": "Litros"})[cols], use_container_width=True, hide_index=True)
+            rename_cols = {"Litros_Ticket": "Litros"}
+existing_rename = {k: v for k, v in rename_cols.items() if k in df_m_disp.columns}
+df_temp = df_m_disp.rename(columns=existing_rename)
+
+valid_cols = [c for c in cols if c in df_temp.columns]
+st.dataframe(df_temp[valid_cols], use_container_width=True, hide_index=True)
         else:
             st.info("No hay registros de recepción MHSA para el período seleccionado.")
 
