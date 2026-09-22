@@ -494,7 +494,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   
   try:
     with st.spinner("Sincronizando datos de Mastellone..."):
-      raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
+      xls_prod_mast = pd.ExcelFile(URL_PRODUCCION)
+      hoja_prod_mast = "2026" if "2026" in xls_prod_mast.sheet_names else xls_prod_mast.sheet_names[-1]
+      raw_prod = pd.read_excel(xls_prod_mast, sheet_name=hoja_prod_mast, skiprows=6)
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
       df_prod["Lote"] = raw_prod.iloc[:, 1]
@@ -663,14 +665,22 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 lambda r: r.Fecha.strftime("%d/%m/%Y") if pd.notna(r.Fecha) else "",
                 lambda r: str(r.Lote),
                 lambda r: str(r.Producto),
-                lambda r: formato_miles(r.get("Litros Procesados", 0)),
-                lambda r: formato_miles(r.get("Producto Terminado", 0)),
-                lambda r: str(r.get("Ratio de Conversión (%)", "0%"))
+                lambda r: formato_miles(r.Litros_Procesados),
+                lambda r: formato_miles(r.Producto_Terminado),
+                lambda r: str(r.Ratio_Conversion)
             ]
-            
+
+            # itertuples() no soporta .get() y los nombres con espacios se pierden como atributos,
+            # por eso renombramos antes de generar el PDF (igual que se hace en el Módulo 3).
+            df_consolidado_pdf = df_consolidado.rename(columns={
+                "Litros Procesados": "Litros_Procesados",
+                "Producto Terminado": "Producto_Terminado",
+                "Ratio de Conversión (%)": "Ratio_Conversion",
+            })
+
             mes_nombre_m = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
             subt_mast = f"Período: {mes_nombre_m} {filtro_anio}"
-            pdf_mast_bytes = generar_pdf_base("Reporte de Producción Fasón - Mastellone", subt_mast, [f"Total Litros Procesados: {formato_miles(total_litros_proc)} L"], headers_pdf, df_filtrado, mapeo_pdf)
+            pdf_mast_bytes = generar_pdf_base("Reporte de Producción Fasón - Mastellone", subt_mast, [f"Total Litros Procesados: {formato_miles(total_litros_proc)} L"], headers_pdf, df_consolidado_pdf, mapeo_pdf)
             st.download_button("📥 Descargar Reporte PDF Mastellone", data=pdf_mast_bytes, file_name="Reporte_Produccion_Mastellone.pdf", mime="application/pdf")
         else:
             st.info("No hay producción de lotes Mastellone para el período seleccionado.")
@@ -712,11 +722,13 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       df_prod['Mes'] = df_prod['Fecha'].dt.month
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
-      url_recibo_limpia = f"{URL_REMITOS}&t={int(time.time())}"
-      raw_recibo = pd.read_excel(url_recibo_limpia)
+      url_remitos_limpia = f"{URL_REMITOS}&t={int(time.time())}"
+      xls_remitos_p = pd.ExcelFile(url_remitos_limpia)
+      hoja_remitos_p = next((s for s in xls_remitos_p.sheet_names if "od-pro-03" in s.lower()), xls_remitos_p.sheet_names[0])
+      raw_recibo = pd.read_excel(xls_remitos_p, sheet_name=hoja_remitos_p, skiprows=4, usecols="B:K")
       df_recibo = pd.DataFrame()
-      df_recibo['Fecha'] = pd.to_datetime(raw_recibo.iloc[:, 1], format="mixed", dayfirst=True, errors='coerce')
-      df_recibo['Litros Ingresados'] = pd.to_numeric(raw_recibo.iloc[:, 5], errors='coerce').fillna(0)
+      df_recibo['Fecha'] = pd.to_datetime(raw_recibo.iloc[:, 0], format="mixed", dayfirst=True, errors='coerce').dt.normalize()
+      df_recibo['Litros Ingresados'] = pd.to_numeric(raw_recibo.iloc[:, 4], errors='coerce').fillna(0)
       df_recibo = df_recibo.dropna(subset=['Fecha'])
       df_recibo['Año'] = df_recibo['Fecha'].dt.year
       df_recibo['Mes'] = df_recibo['Fecha'].dt.month
