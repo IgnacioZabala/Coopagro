@@ -146,7 +146,7 @@ def clasificar_lote_general(lote_str):
   return prod_nombre, grupo
 
 # =========================================================================
-# FUNCIONES DE PDF BLINDADAS (Con Logo y Posicionamiento Dinámico)
+# FUNCIONES DE PDF BLINDADAS (Logo Proporcional y Posicionamiento Dinámico)
 # =========================================================================
 def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list, df_datos: pd.DataFrame, filas_mapeo: list, usable_width: int = 190):
   pdf = FPDF(orientation="P", unit="mm", format="A4")
@@ -154,13 +154,12 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   pdf.add_page()
   
   logo_y = 8
-  logo_w = 55
-  logo_h = 20  # Altura proporcional estimada para el cálculo automático
+  logo_w = 45  # Ancho fijo en mm. Al no pasar 'h', FPDF calcula la altura manteniendo el ratio original.
   
   if os.path.exists("logo.png"):
-    pdf.image("logo.png", x=82, y=logo_y, w=logo_w, h=logo_h)
-    # Posicionamiento dinámico: el título arranca exactamente debajo del logo con 8mm de margen
-    pdf.set_y(logo_y + logo_h + 8)
+    pdf.image("logo.png", x=(210 - logo_w) / 2, y=logo_y, w=logo_w)
+    # Posicionamiento dinámico: logo_y + altura estimada proporcional + margen de separación (8mm)
+    pdf.set_y(logo_y + 16 + 8)
   else:
     pdf.set_y(20)
 
@@ -678,7 +677,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     st.code(traceback.format_exc())
       
 # =========================================================================
-# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO (Con Ratios y PDF Actualizados)
 # =========================================================================
 elif modulo_principal == "🧀 Producción y Rendimiento":
   st.header("🧀 Producción y Rendimiento Coopagro")
@@ -735,10 +734,9 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     tot_ingresados_c = df_r_filtered['Litros Ingresados'].sum() if not df_r_filtered.empty else 0
     tot_proc_c = df_p_filtered['Litros Procesados'].sum() if not df_p_filtered.empty else 0
     
-    # Producto Terminado Total (PT + PNC)
     tot_pt_neto = df_p_filtered['Producto Terminado'].sum() if not df_p_filtered.empty else 0
     tot_pnc_c = df_p_filtered['PNC'].sum() if not df_p_filtered.empty else 0
-    tot_pt_c = tot_pt_neto + tot_pnc_c 
+    tot_pt_c = tot_pt_neto + tot_pnc_c
     
     ratio_proc_c = (tot_pt_c / tot_proc_c * 100) if tot_proc_c > 0 else 0
     ratio_ing_c = (tot_pt_c / tot_ingresados_c * 100) if tot_ingresados_c > 0 else 0
@@ -759,7 +757,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         df_p_show['Fecha_Dt'] = df_p_show['Fecha']
         df_p_show['Fecha'] = df_p_show['Fecha_Dt'].dt.strftime('%d/%m/%Y')
         
-        # Columnas numéricas para cálculos
         df_p_show['Litros Procesados Num'] = df_p_show['Litros Procesados']
         df_p_show['PT_Total_Lote'] = df_p_show['Producto Terminado'] + df_p_show['PNC']
         
@@ -797,6 +794,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
   except Exception as e:
     st.error(f"Error en el Módulo de Producción y Rendimiento: {e}")
     st.code(traceback.format_exc())
+
 # =========================================================================
 # MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS
 # =========================================================================
