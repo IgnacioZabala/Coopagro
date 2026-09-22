@@ -734,8 +734,11 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
     tot_ingresados_c = df_r_filtered['Litros Ingresados'].sum() if not df_r_filtered.empty else 0
     tot_proc_c = df_p_filtered['Litros Procesados'].sum() if not df_p_filtered.empty else 0
-    tot_pt_c = df_p_filtered['Producto Terminado'].sum() if not df_p_filtered.empty else 0
+    
+    # Producto Terminado Total (PT + PNC)
+    tot_pt_neto = df_p_filtered['Producto Terminado'].sum() if not df_p_filtered.empty else 0
     tot_pnc_c = df_p_filtered['PNC'].sum() if not df_p_filtered.empty else 0
+    tot_pt_c = tot_pt_neto + tot_pnc_c 
     
     ratio_proc_c = (tot_pt_c / tot_proc_c * 100) if tot_proc_c > 0 else 0
     ratio_ing_c = (tot_pt_c / tot_ingresados_c * 100) if tot_ingresados_c > 0 else 0
@@ -753,17 +756,21 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     st.subheader("Detalle de Lotes de Producción Coopagro")
     if not df_p_filtered.empty:
         df_p_show = df_p_filtered.copy()
-        df_p_show['Fecha'] = df_p_show['Fecha'].dt.strftime('%d/%m/%Y')
+        df_p_show['Fecha_Dt'] = df_p_show['Fecha']
+        df_p_show['Fecha'] = df_p_show['Fecha_Dt'].dt.strftime('%d/%m/%Y')
+        
+        # Columnas numéricas para cálculos
         df_p_show['Litros Procesados Num'] = df_p_show['Litros Procesados']
-        df_p_show['Producto Terminado Num'] = df_p_show['Producto Terminado']
+        df_p_show['PT_Total_Lote'] = df_p_show['Producto Terminado'] + df_p_show['PNC']
+        
         df_p_show['Litros Procesados'] = df_p_show['Litros Procesados'].apply(formato_miles)
-        df_p_show['Producto Terminado'] = df_p_show['Producto Terminado'].apply(formato_miles)
+        df_p_show['Producto Terminado'] = df_p_show['PT_Total_Lote'].apply(formato_miles)
         df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
-        df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(x['Producto Terminado Num'] / x['Litros Procesados Num'] * 100):.2f}%" if x['Litros Procesados Num'] > 0 else "0.00%", axis=1)
+        df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(x['PT_Total_Lote'] / x['Litros Procesados Num'] * 100):.2f}%" if x['Litros Procesados Num'] > 0 else "0.00%", axis=1)
         
         st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']], use_container_width=True, hide_index=True)
         
-        headers_pdf_c = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Rend.", 15)]
+        headers_pdf_c = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Producto Term.", 25), ("Rend.", 15)]
         mapeo_pdf_c = [
             lambda r: r.Fecha if pd.notna(r.Fecha) else "",
             lambda r: str(r.Lote),
@@ -772,7 +779,17 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
             lambda r: str(r.Producto_Terminado),
             lambda r: str(r.Rendimiento_Lote)
         ]
-        pdf_coop_bytes = generar_pdf_base("Reporte de Producción y Rendimiento - Coopagro", f"Período: {f_mes_p}/{f_anio_p}", [f"Total Litros Procesados: {formato_miles(tot_proc_c)} L", f"Rendimiento Global: {ratio_proc_c:.2f}%"], headers_pdf_c, df_p_show.rename(columns={"Litros Procesados": "Litros_Procesados", "Producto Terminado": "Producto_Terminado", "Rendimiento Lote": "Rendimiento_Lote"}), mapeo_pdf_c)
+        
+        metricas_pdf_coop = [
+            f"Total Litros Ingresados: {formato_miles(tot_ingresados_c)} L",
+            f"Total Litros Procesados: {formato_miles(tot_proc_c)} L",
+            f"Total Producto Terminado: {formato_miles(tot_pt_c)} kg",
+            f"Ratio Litros Procesados / Producto Terminado: {ratio_proc_c:.2f}%",
+            f"Ratio Litros Ingresados / Producto Terminado: {ratio_ing_c:.2f}%"
+        ]
+        
+        df_pdf_prep = df_p_show.rename(columns={"Litros Procesados": "Litros_Procesados", "Producto Terminado": "Producto_Terminado", "Rendimiento Lote": "Rendimiento_Lote"})
+        pdf_coop_bytes = generar_pdf_base("Reporte de Producción y Rendimiento - Coopagro", f"Período: {f_mes_p}/{f_anio_p}", metricas_pdf_coop, headers_pdf_c, df_pdf_prep, mapeo_pdf_c)
         st.download_button("📥 Descargar Reporte PDF Coopagro", data=pdf_coop_bytes, file_name="Reporte_Produccion_Coopagro.pdf", mime="application/pdf")
     else:
         st.info("No hay registros de producción para el período seleccionado.")
@@ -780,7 +797,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
   except Exception as e:
     st.error(f"Error en el Módulo de Producción y Rendimiento: {e}")
     st.code(traceback.format_exc())
-
 # =========================================================================
 # MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS
 # =========================================================================
