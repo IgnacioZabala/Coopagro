@@ -6,6 +6,7 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import datetime
 
 from fpdf import FPDF
 import pandas as pd
@@ -19,6 +20,18 @@ st.set_page_config(
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded",
+)
+
+st.markdown(
+    """
+    <style>
+        .main { background-color: #f8f9fa; }
+        .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #e3e6f0; }
+        .stButton button { border-radius: 6px; font-weight: 600; }
+        .main-header { font-size: 26px; font-weight: 800; color: #1f2937; }
+    </style>
+""",
+    unsafe_allow_html=True,
 )
 
 # --- IDs de Google Drive y Sheets (Blindados) ---
@@ -133,16 +146,21 @@ def clasificar_lote_general(lote_str):
   return prod_nombre, grupo
 
 # =========================================================================
-# FUNCIONES DE PDF BLINDADAS
+# FUNCIONES DE PDF BLINDADAS (Con Logo y Posicionamiento Dinámico)
 # =========================================================================
 def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list, df_datos: pd.DataFrame, filas_mapeo: list, usable_width: int = 190):
   pdf = FPDF(orientation="P", unit="mm", format="A4")
   pdf.set_auto_page_break(auto=True, margin=15)
   pdf.add_page()
   
+  logo_y = 8
+  logo_w = 55
+  logo_h = 20  # Altura proporcional estimada para el cálculo automático
+  
   if os.path.exists("logo.png"):
-    pdf.image("logo.png", x=82, y=8, w=55)
-    pdf.set_y(50)
+    pdf.image("logo.png", x=82, y=logo_y, w=logo_w, h=logo_h)
+    # Posicionamiento dinámico: el título arranca exactamente debajo del logo con 8mm de margen
+    pdf.set_y(logo_y + logo_h + 8)
   else:
     pdf.set_y(20)
 
@@ -294,7 +312,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     for col in ["Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]:
       if col not in df.columns: df[col] = pd.NA
 
-    # Procesamiento Lab (Priorizando Muestra 1 con conversión a string)
+    # Procesamiento Lab (Muestra 1 asegurada)
     if not df_lab_raw.empty:
       df_lab = df_lab_raw.copy()
       col_sample = next((c for c in df_lab.columns if any(x in c.lower() for x in ["sample", "number", "tambo", "muestra"])), df_lab.columns[0])
@@ -304,7 +322,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_lab["Fecha"] = df_lab["Fecha_Extraida"].fillna(pd.to_datetime(df_lab[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
       df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
       
-      # AISLAMIENTO MUESTRA 1 (Convertido a string para evitar errores de tipo)
       df_lab["_sample_str"] = df_lab[col_sample].astype(str)
       df_lab = df_lab.sort_values(by=["_sample_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
       
@@ -324,7 +341,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         if "Proteina_Lab" in df: df["Proteina"] = df["Proteina_Lab"].combine_first(df["Proteina"])
         if "Crioscopia_Lab" in df: df["Crioscopia"] = df["Crioscopia_Lab"].combine_first(df["Crioscopia"])
 
-    # Procesamiento Bacsomatic (Priorizando Muestra 1 con conversión a string)
+    # Procesamiento Bacsomatic (Muestra 1 asegurada)
     if not df_bac_raw.empty:
       df_bac = df_bac_raw.copy()
       col_id = next((c for c in df_bac.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac.columns[0])
@@ -334,7 +351,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_bac["Fecha"] = df_bac["Fecha_Extraida"].fillna(pd.to_datetime(df_bac[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
       df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
       
-      # AISLAMIENTO MUESTRA 1 (Convertido a string)
       df_bac["_id_str"] = df_bac[col_id].astype(str)
       df_bac = df_bac.sort_values(by=["_id_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
       
@@ -357,7 +373,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     df["AnioMes"] = df["Fecha"].dt.to_period("M")
     df = df.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
 
-    # Submenú Módulo 1
     st.sidebar.markdown("---")
     vista_coop = st.sidebar.radio("Sección Coopagro:", ["Panel de Control General", "Gestión y Reportes por Tambo", "Envío Masivo Semanal"])
 
@@ -471,7 +486,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     st.code(traceback.format_exc())
 
 # =========================================================================
-# MÓDULO 2: RECEPCIÓN Y CALIDAD MASTELLONE (FASÓN) - CORREGIDO
+# MÓDULO 2: RECEPCIÓN Y CALIDAD MASTELLONE (FASÓN)
 # =========================================================================
 elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   st.header("🚛 Recepción, Calidad y Producción Mastellone (Fasón)")
@@ -521,7 +536,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
       
-      # MilkoScan (Priorizando Muestra 1 con conversión segura a string)
       if not df_lab_raw.empty:
           df_lab_m = df_lab_raw.copy()
           col_sample = df_lab_m.columns[0]
@@ -532,7 +546,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(pd.to_datetime(df_lab_m[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
           df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
           
-          # AISLAMIENTO MUESTRA 1 (Convertido a string para evitar TypeError)
           df_lab_m["_sample_str"] = df_lab_m[col_sample].astype(str)
           df_lab_m = df_lab_m.sort_values(by=["_sample_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
           
@@ -550,7 +563,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
               df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
 
-      # Bacsomatic (Priorizando Muestra 1 con conversión segura a string)
       if not df_bac_raw.empty:
           df_bac_m = df_bac_raw.copy()
           col_sample_bac = df_bac_m.columns[5] if len(df_bac_m.columns) > 5 else df_bac_m.columns[0]
@@ -561,7 +573,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
-          # AISLAMIENTO MUESTRA 1 (Convertido a string)
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
           df_bac_m = df_bac_m.sort_values(by=["_id_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
           
