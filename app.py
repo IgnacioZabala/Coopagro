@@ -1046,6 +1046,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
       filtro_anio_costo = st.sidebar.selectbox("Año de Análisis", anios_disponibles, index=0, key="costo_anio")
       filtro_mes_costo = st.sidebar.selectbox("Mes de Análisis", meses_disponibles, format_func=lambda m: MESES_ES[m], index=8, key="costo_mes")
 
+      # Procesamiento de Ingresos
       if not df_ingresos_form.empty and 'Cantidad recibida' in df_ingresos_form.columns:
           df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
           if 'Costo total (pesos)' in df_ingresos_form.columns:
@@ -1069,8 +1070,19 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
           compras_totales = pd.DataFrame(columns=['Insumo', 'Total Ingresado'])
           precios_nuevos = pd.DataFrame(columns=['Insumo', 'Precio Calculado'])
 
-      # ---> PROCESAMIENTO ROBUSTO DE STOCK (Soporta formato horizontal/ancho de Google Forms) <---
+      # ---> PROCESAMIENTO DE STOCK HORIZONTAL CON MATCHEO INTELIGENTE <---
       ultimo_stock = pd.DataFrame(columns=['Insumo', 'Stock Base Físico'])
+      lista_insumos_maestro = df_maestro['Insumo'].tolist()
+
+      def matchear_con_maestro(nombre_form):
+          n_form = str(nombre_form).lower().strip()
+          for m in lista_insumos_maestro:
+              m_lower = str(m).lower().strip()
+              # Si hay coincidencia parcial o por los primeros 8 caracteres
+              if n_form in m_lower or m_lower in n_form or (len(n_form) > 4 and n_form[:8] in m_lower):
+                  return m
+          return nombre_form
+
       if not df_stock_form.empty:
           col_tiempo = next((c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()), df_stock_form.columns[0])
           df_stock_form['Fecha_Dt'] = pd.to_datetime(df_stock_form[col_tiempo], format="mixed", dayfirst=True, errors='coerce')
@@ -1083,8 +1095,10 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
               cols_excluir = [col_tiempo, 'Fecha_Dt', 'Marca temporal', 'Fecha de recuento', 'Insumo', 'Stock fisico real', 'Columna 5']
               cols_insumos = [c for c in df_stock_form.columns if c not in cols_excluir and not c.startswith('Unnamed')]
               
-              df_stock_long = df_stock_form.melt(id_vars=['Fecha_Dt'], value_vars=cols_insumos, var_name='Insumo', value_name='Stock Base Físico')
+              df_stock_long = df_stock_form.melt(id_vars=['Fecha_Dt'], value_vars=cols_insumos, var_name='Insumo_Form', value_name='Stock Base Físico')
+              df_stock_long['Insumo'] = df_stock_long['Insumo_Form'].apply(matchear_con_maestro)
               df_stock_long['Stock Base Físico'] = pd.to_numeric(df_stock_long['Stock Base Físico'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+              
               ultimo_stock = df_stock_long.sort_values('Fecha_Dt').groupby('Insumo').last().reset_index()
 
       tinas_mes = 0
@@ -1116,14 +1130,16 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
           tinas_mes = 0
           kilos_mes = 0.0
 
-      # ---> BLINDAJE DE TIPOS DE DATOS Y UNIÓN SEGURA SIN PERDER TEXTO <---
+      # ---> UNIÓN SEGURA Y NORMALIZACIÓN DE LLAVES <---
       df_maestro['Insumo'] = df_maestro['Insumo'].astype(str).str.strip()
       if not ultimo_stock.empty:
           ultimo_stock['Insumo'] = ultimo_stock['Insumo'].astype(str).str.strip()
       if not compras_totales.empty:
-          compras_totales['Insumo'] = compras_totales['Insumo'].astype(str).str.strip()
+          compras_totales['Insumo'] = compras_totales['Insumo'].apply(matchear_con_maestro).astype(str).str.strip()
+          compras_totales = compras_totales.groupby('Insumo')['Total Ingresado'].sum().reset_index()
       if not precios_nuevos.empty:
-          precios_nuevos['Insumo'] = precios_nuevos['Insumo'].astype(str).str.strip()
+          precios_nuevos['Insumo'] = precios_nuevos['Insumo'].apply(matchear_con_maestro).astype(str).str.strip()
+          precios_nuevos = precios_nuevos.groupby('Insumo')['Precio Calculado'].last().reset_index()
 
       df_master_calc = pd.merge(df_maestro, ultimo_stock[['Insumo', 'Stock Base Físico']], on='Insumo', how='left')
       df_master_calc['Stock Base Físico'] = df_master_calc['Stock Base Físico'].fillna(0.0)
