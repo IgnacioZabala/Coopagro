@@ -581,7 +581,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       for row in df_datos.itertuples(index=False):
           for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
               val = fn_mapeo(row)
-              align = "L" if "Nombre" in headers_ajustados[i][0] or "Producto" in headers_ajustados[i][0] else "C"
+              align = "L" if "Nombre" in headers_ajustados[i][0] or "Tambo" in headers_ajustados[i][0] or "Producto" in headers_ajustados[i][0] else "C"
               pdf.cell(col_w, 7, str(val), 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
 
       output = pdf.output(dest="S")
@@ -760,6 +760,25 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     with tab1:
         st.subheader("Recepción y Calidad de Tambos Mastellone")
         if not df_mhsa_f.empty:
+            # Cálculo del ratio grasa / proteína ponderado para los tambos con datos
+            df_val_gp = df_mhsa_f.dropna(subset=["Litros_Ticket", "Grasa_Lab", "Proteina_Lab"])
+            if not df_val_gp.empty:
+                tot_l_gp = df_val_gp["Litros_Ticket"].sum()
+                g_pond_m = (df_val_gp["Grasa_Lab"] * df_val_gp["Litros_Ticket"]).sum() / tot_l_gp if tot_l_gp > 0 else pd.NA
+                p_pond_m = (df_val_gp["Proteina_Lab"] * df_val_gp["Litros_Ticket"]).sum() / tot_l_gp if tot_l_gp > 0 else pd.NA
+                ratio_gp_m = g_pond_m / p_pond_m if (pd.notna(g_pond_m) and pd.notna(p_pond_m) and p_pond_m > 0) else pd.NA
+            else:
+                g_pond_m, p_pond_m, ratio_gp_m = pd.NA, pd.NA, pd.NA
+
+            # Métricas específicas de calidad en recepción
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Grasa Ponderada", f"{g_pond_m:.2f}%".replace(".", ",") if pd.notna(g_pond_m) else "S/D")
+            m2.metric("Proteína Ponderada", f"{p_pond_m:.2f}%".replace(".", ",") if pd.notna(p_pond_m) else "S/D")
+            m3.metric("Ratio Grasa / Prot.", f"{ratio_gp_m:.2f}".replace(".", ",") if pd.notna(ratio_gp_m) else "S/D")
+            m4.metric("Registros con Calidad", len(df_val_gp))
+
+            st.markdown("---")
+
             df_m_disp = df_mhsa_f.sort_values(by=["Fecha", "Num_Tambo"]).copy()
             df_m_disp["Fecha"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
             df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
@@ -771,20 +790,21 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "UFC_Val" in df_m_disp: df_m_disp["UFC"] = df_m_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC_Val" in df_m_disp: df_m_disp["SCC"] = df_m_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
-            df_m_disp = df_m_disp.rename(columns={"Num_Tambo": "Num Tambo"})
+            df_m_disp["Código"] = df_m_disp["Num_Tambo"]
             
-            cols = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura"]
+            cols = ["Fecha", "Código", "Tambo", "Litros", "Temperatura"]
             for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]:
                 if col_extra in df_m_disp: cols.append(col_extra)
             
             st.dataframe(df_m_disp[cols], use_container_width=True, hide_index=True)
 
             st.markdown("---")
-            df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia"})
+            df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia", "Código": "Codigo"})
             
-            headers_pdf_rec = [("Fecha", 25), ("Tambo", 70), ("Litros", 25), ("Temp", 20), ("Grasa", 25), ("Proteina", 25)]
+            headers_pdf_rec = [("Fecha", 22), ("Código", 20), ("Tambo", 68), ("Litros", 22), ("Temp", 18), ("Grasa", 20), ("Proteina", 20)]
             mapeo_pdf_rec = [
                 lambda r: r.Fecha if pd.notna(r.Fecha) else "",
+                lambda r: str(r.Codigo),
                 lambda r: str(r.Tambo)[:25],
                 lambda r: str(r.Litros),
                 lambda r: str(getattr(r, "Temperatura", "-")),
@@ -794,7 +814,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             
             mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
             subt_rec = f"Período: {mes_str} {filtro_anio}"
-            metricas_rec = [f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L"]
+            ratio_gp_str = f"{ratio_gp_m:.2f}".replace(".", ",") if pd.notna(ratio_gp_m) else "S/D"
+            metricas_rec = [
+                f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L",
+                f"Ratio Grasa / Proteína Ponderado: {ratio_gp_str}"
+            ]
             
             pdf_rec_bytes = generar_pdf_mastellone_sin_logo("Reporte de Recepción y Calidad MHSA", subt_rec, metricas_rec, headers_pdf_rec, df_pdf_rec, mapeo_pdf_rec)
             st.download_button("📥 Descargar Reporte Recepción PDF", data=pdf_rec_bytes, file_name="Reporte_Recepcion_MHSA.pdf", mime="application/pdf")
