@@ -574,7 +574,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["PNC"] = raw_prod.iloc[:, 6]
       df_prod = df_prod.dropna(subset=["Fecha", "Lote"])
       
-      df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], format="mixed", dayfirst=True, errors="coerce")
+      df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
@@ -591,18 +591,18 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
       sheet_mhsa = next((s for s in xls_mastellone.sheet_names if "mhsa" in s.lower()), xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0])
       
-      # LECTURA DEL EXCEL DIRECTAMENTE COMO TABLA (sin skiprows)
+      # LECTURA DEL EXCEL DIRECTAMENTE COMO TABLA
       df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
       
       df_mhsa = pd.DataFrame()
       
-      # ---> CORRECCIÓN DE LOS ÍNDICES DE COLUMNAS <---
-      df_mhsa["Fecha"] = pd.to_datetime(df_mhsa_raw.iloc[:, 0], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
+      # ---> CORRECCIÓN DE FECHAS (dd/mm/aaaa) E ÍNDICES DE COLUMNAS REALES <---
+      df_mhsa["Fecha"] = pd.to_datetime(df_mhsa_raw.iloc[:, 0], dayfirst=True, errors="coerce").dt.normalize()
       df_mhsa["N_Remito"] = df_mhsa_raw.iloc[:, 1]
-      df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 3].apply(limpiar_tambo)
-      df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 4]
-      df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa_raw.iloc[:, 6].astype(str).str.replace(',', '.'), errors="coerce").fillna(0)
-      df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa_raw.iloc[:, 10].astype(str).str.replace(',', '.'), errors="coerce") if len(df_mhsa_raw.columns) > 10 else pd.NaT
+      df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2].apply(limpiar_tambo) # Col 2: N° Tambo
+      df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]                          # Col 3: Tambo
+      df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa_raw.iloc[:, 4].astype(str).str.replace(',', '.'), errors="coerce").fillna(0) # Col 4: Litros
+      df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa_raw.iloc[:, 7].astype(str).str.replace(',', '.'), errors="coerce") if len(df_mhsa_raw.columns) > 7 else pd.NaT # Col 7: Temp
       
       df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
       
@@ -620,7 +620,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
           df_lab_m["Fecha_Extraida"] = pd.to_datetime(df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
           col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
-          df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(pd.to_datetime(df_lab_m[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
+          df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(pd.to_datetime(df_lab_m[col_date], dayfirst=True, errors="coerce").dt.normalize() if col_date else pd.NaT)
           df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_lab_m["_sample_str"] = df_lab_m[col_sample].astype(str)
@@ -647,7 +647,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
           df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
           col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
-          df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
+          df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], dayfirst=True, errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
@@ -720,7 +720,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "UFC_Val" in df_m_disp: df_m_disp["UFC"] = df_m_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC_Val" in df_m_disp: df_m_disp["SCC"] = df_m_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
-            cols = ["Fecha", "Num_Tambo", "Tambo", "Litros", "Temperatura"]
+            # ---> RENOMBRADO A "Num Tambo" SIN GUIONES <---
+            df_m_disp = df_m_disp.rename(columns={"Num_Tambo": "Num Tambo"})
+            
+            cols = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura"]
             for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]:
                 if col_extra in df_m_disp: cols.append(col_extra)
             
