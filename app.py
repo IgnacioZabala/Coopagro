@@ -907,10 +907,8 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     with st.spinner("Sincronizando formularios, inventario y producción..."):
       import time
       
-      # Usamos tu ID de Google Sheet actual
       SHEET_INSUMOS_NUEVO_ID = SHEET_INSUMOS_ID 
       
-      # URLs apuntando exactamente a tus pestañas "Maestro_Insumos", "Stock" e "Ingresos"
       url_maestro = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_NUEVO_ID}/gviz/tq?tqx=out:csv&sheet=Maestro_Insumos&t={int(time.time())}"
       url_stock = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_NUEVO_ID}/gviz/tq?tqx=out:csv&sheet=Stock&t={int(time.time())}"
       url_ingresos = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_NUEVO_ID}/gviz/tq?tqx=out:csv&sheet=Ingresos&t={int(time.time())}"
@@ -924,27 +922,52 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
       df_stock_form.columns = df_stock_form.columns.str.strip()
       df_ingresos_form.columns = df_ingresos_form.columns.str.strip()
 
+      # Blindaje de columnas en el Maestro (si falta alguna, la crea con 0 o texto vacío)
+      cols_requeridas_maestro = {
+          'Insumo': 'Desconocido',
+          'Categoría': 'General',
+          'Unidad': 'un',
+          'Precio Unitario': 0.0,
+          'Consumo por tina': 0.0,
+          'Stock de seguridad': 0.0,
+          'Demora proveedor (dias)': 0.0,
+          'Consumo Diario Promedio': 0.0
+      }
+      for col, val_def in cols_requeridas_maestro.items():
+          if col not in df_maestro.columns:
+              df_maestro[col] = val_def
+
       # Limpieza numérica del maestro
       cols_num_m = ['Precio Unitario', 'Consumo por tina', 'Stock de seguridad', 'Demora proveedor (dias)', 'Consumo Diario Promedio']
       for col in cols_num_m:
           df_maestro[col] = pd.to_numeric(df_maestro[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
 
       # 1. Procesar Ingresos desde el Form
-      df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
-      df_ingresos_form['Costo total (pesos)'] = pd.to_numeric(df_ingresos_form['Costo total (pesos)'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
-      
-      # Suma total de compras ingresadas por insumo
-      compras_totales = df_ingresos_form.groupby('Insumo')['Cantidad recibida'].sum().reset_index()
-      compras_totales.rename(columns={'Cantidad recibida': 'Total Ingresado'}, inplace=True)
-      
-      # Actualizar Precio Unitario promedio ponderado si se cargaron costos en el form de ingresos
-      df_ingresos_form['Precio Calculado'] = df_ingresos_form.apply(lambda x: x['Costo total (pesos)'] / x['Cantidad recibida'] if x['Cantidad recibida'] > 0 else 0, axis=1)
-      precios_nuevos = df_ingresos_form[df_ingresos_form['Precio Calculado'] > 0].groupby('Insumo')['Precio Calculado'].last().reset_index()
+      if not df_ingresos_form.empty and 'Cantidad recibida' in df_ingresos_form.columns:
+          df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+          if 'Costo total (pesos)' in df_ingresos_form.columns:
+              df_ingresos_form['Costo total (pesos)'] = pd.to_numeric(df_ingresos_form['Costo total (pesos)'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+          else:
+              df_ingresos_form['Costo total (pesos)'] = 0.0
+              
+          compras_totales = df_ingresos_form.groupby('Insumo')['Cantidad recibida'].sum().reset_index()
+          compras_totales.rename(columns={'Cantidad recibida': 'Total Ingresado'}, inplace=True)
+          
+          df_ingresos_form['Precio Calculado'] = df_ingresos_form.apply(lambda x: x['Costo total (pesos)'] / x['Cantidad recibida'] if x['Cantidad recibida'] > 0 else 0, axis=1)
+          precios_nuevos = df_ingresos_form[df_ingresos_form['Precio Calculado'] > 0].groupby('Insumo')['Precio Calculado'].last().reset_index()
+      else:
+          compras_totales = pd.DataFrame(columns=['Insumo', 'Total Ingresado'])
+          precios_nuevos = pd.DataFrame(columns=['Insumo', 'Precio Calculado'])
 
-      # 2. Procesar Recuentos de Stock Físico (Último recuento registrado)
-      df_stock_form['Stock fisico real'] = pd.to_numeric(df_stock_form['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
-      ultimo_stock = df_stock_form.sort_values('Marca temporal').groupby('Insumo').last().reset_index()
-      ultimo_stock.rename(columns={'Stock fisico real': 'Stock Base Físico'}, inplace=True)
+      # 2. Procesar Recuentos de Stock Físico
+      if not df_stock_form.empty and 'Stock fisico real' in df_stock_form.columns:
+          df_stock_form['Stock fisico real'] = pd.to_numeric(df_stock_form['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+          # Verificar si existe 'Marca temporal' para ordenar
+          col_tiempo = next((c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()), df_stock_form.columns[0])
+          ultimo_stock = df_stock_form.sort_values(col_tiempo).groupby('Insumo').last().reset_index()
+          ultimo_stock.rename(columns={'Stock fisico real': 'Stock Base Físico'}, inplace=True)
+      else:
+          ultimo_stock = pd.DataFrame(columns=['Insumo', 'Stock Base Físico'])
 
       # 3. Calcular Tinas Totales Producidas en Planta (Módulo 3)
       tinas_producidas_total = 0
@@ -961,20 +984,20 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
       except Exception:
           tinas_producidas_total = 0
 
-      # Cruzar toda la información con el Maestro de Insumos
+      # Cruzar información con el Maestro de Insumos
       df_master_calc = pd.merge(df_maestro, ultimo_stock[['Insumo', 'Stock Base Físico']], on='Insumo', how='left').fillna(0)
       df_master_calc = pd.merge(df_master_calc, compras_totales, on='Insumo', how='left').fillna(0)
       
-      # Si hay precios actualizados por las compras recientes, los pisamos en el maestro
-      if not precios_nuevos.empty:
+      if not precios_nuevos.empty and 'Insumo' in precios_nuevos.columns:
           df_master_calc = pd.merge(df_master_calc, precios_nuevos, on='Insumo', how='left')
-          df_master_calc['Precio Unitario'] = df_master_calc['Precio Calculado'].combine_first(df_master_calc['Precio Unitario'])
-          df_master_calc.drop(columns=['Precio Calculado'], inplace=True, errors='ignore')
+          if 'Precio Calculado' in df_master_calc.columns:
+              df_master_calc['Precio Unitario'] = df_master_calc['Precio Calculado'].combine_first(df_master_calc['Precio Unitario'])
+              df_master_calc.drop(columns=['Precio Calculado'], inplace=True, errors='ignore')
 
       # Consumo Teórico = Tinas Producidas * Consumo por tina estándar
       df_master_calc['Consumo Teórico Producción'] = tinas_producidas_total * df_master_calc['Consumo por tina']
       
-      # Stock Actual = (Último recuento físico + Compras por Form) - Consumo Teórico de Fábrica
+      # Stock Actual = (Último recuento físico + Compras por Form) - Consumo Teórico
       df_master_calc['Stock Actual'] = (df_master_calc['Stock Base Físico'] + df_master_calc['Total Ingresado']) - df_master_calc['Consumo Teórico Producción']
       df_master_calc['Stock Actual'] = df_master_calc['Stock Actual'].apply(lambda x: max(0.0, x))
 
@@ -998,8 +1021,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
         df_mostrar = df_master_calc[['Insumo', 'Categoría', 'Stock Actual', 'Unidad', 'Punto de Pedido', 'Estado', 'Valorización ($)']].copy()
         df_mostrar['Valorización ($)'] = df_mostrar['Valorización ($)'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
         st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
-        
-        st.info("💡 Este panel toma automáticamente los recuentos de tu pestaña 'Stock', suma las compras de la pestaña 'Ingresos' y descuenta el consumo real de las tinas de producción.")
 
     with tab_inv2:
         st.subheader("Costo Variable Estándar por Tina")
