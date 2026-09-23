@@ -619,20 +619,18 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
       sheet_mhsa = next((s for s in xls_mastellone.sheet_names if "mhsa" in s.lower()), xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0])
       
-      # ---> LECTURA DEL EXCEL SIN dtype=str PARA PRESERVAR FECHAS NATIVAS <---
       df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa)
       
       df_mhsa = pd.DataFrame()
       
-      # ---> CORRECCIÓN ESTRICTA DE FECHAS (dd/mm/aaaa) E ÍNDICES REALES <---
       fechas_col = df_mhsa_raw.iloc[:, 0]
       df_mhsa["Fecha"] = pd.to_datetime(fechas_col, format="%d/%m/%Y", errors="coerce").fillna(pd.to_datetime(fechas_col, dayfirst=True, errors="coerce")).dt.normalize()
       
       df_mhsa["N_Remito"] = df_mhsa_raw.iloc[:, 1]
-      df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2].apply(limpiar_tambo) # Col 2: N° Tambo
-      df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]                          # Col 3: Tambo
-      df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa_raw.iloc[:, 4].astype(str).str.replace(',', '.'), errors="coerce").fillna(0) # Col 4: Litros
-      df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa_raw.iloc[:, 7].astype(str).str.replace(',', '.'), errors="coerce") if len(df_mhsa_raw.columns) > 7 else pd.NaT # Col 7: Temp
+      df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2].apply(limpiar_tambo)
+      df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
+      df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa_raw.iloc[:, 4].astype(str).str.replace(',', '.'), errors="coerce").fillna(0)
+      df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa_raw.iloc[:, 7].astype(str).str.replace(',', '.'), errors="coerce") if len(df_mhsa_raw.columns) > 7 else pd.NaT
       
       df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
       
@@ -667,7 +665,19 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               df_milko_clean = df_lab_m[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
               for c in map_cols.values(): 
                   df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
+              
+              # CRUCE ORIGINAL (Mismo Día)
               df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
+              
+              # CRUCE FALLBACK (+1 Día)
+              df_fallback = df_mhsa[["Num_Tambo", "Fecha"]].copy()
+              df_fallback["Fecha_Buscada"] = df_fallback["Fecha"] + pd.Timedelta(days=1)
+              df_milko_fallback = df_milko_clean.rename(columns={"Fecha": "Fecha_Buscada"})
+              df_fallback = pd.merge(df_fallback, df_milko_fallback, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+              
+              for c in map_cols.values():
+                  if c in df_mhsa.columns and c in df_fallback.columns:
+                      df_mhsa[c] = df_mhsa[c].combine_first(df_fallback[c])
 
       if not df_bac_raw.empty:
           df_bac_m = df_bac_raw.copy()
@@ -692,7 +702,19 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               df_bac_clean = df_bac_m[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
               for c in map_cols_bac.values(): 
                   df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
+              
+              # CRUCE ORIGINAL (Mismo Día)
               df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
+              
+              # CRUCE FALLBACK (+1 Día)
+              df_fallback_bac = df_mhsa[["Num_Tambo", "Fecha"]].copy()
+              df_fallback_bac["Fecha_Buscada"] = df_fallback_bac["Fecha"] + pd.Timedelta(days=1)
+              df_bac_fallback = df_bac_clean.rename(columns={"Fecha": "Fecha_Buscada"})
+              df_fallback_bac = pd.merge(df_fallback_bac, df_bac_fallback, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+              
+              for c in map_cols_bac.values():
+                  if c in df_mhsa.columns and c in df_fallback_bac.columns:
+                      df_mhsa[c] = df_mhsa[c].combine_first(df_fallback_bac[c])
 
     st.sidebar.subheader("Filtros Mastellone")
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
