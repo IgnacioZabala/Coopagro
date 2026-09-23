@@ -902,53 +902,119 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 # =========================================================================
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
   st.header("📦 Gestión de Insumos, Inventario y Costos Variables")
+  
   try:
-    with st.spinner("Cargando maestro de insumos y costos..."):
+    with st.spinner("Sincronizando formularios, inventario y producción..."):
       import time
-      sheet_id = "1Zaqtkadw4Mhgcc8WuuFb1YlXvvWbMsM4"
-      sheet_name = "Maestro_Insumos"
-      url_insumos = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}&t={int(time.time())}"
-      df_insumos = pd.read_csv(url_insumos)
-      df_insumos.columns = df_insumos.columns.str.strip()
+      
+      # Usamos tu ID de Google Sheet actual
+      SHEET_INSUMOS_NUEVO_ID = SHEET_INSUMOS_ID 
+      
+      # URLs apuntando exactamente a tus pestañas "Maestro_Insumos", "Stock" e "Ingresos"
+      url_maestro = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_NUEVO_ID}/gviz/tq?tqx=out:csv&sheet=Maestro_Insumos&t={int(time.time())}"
+      url_stock = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_NUEVO_ID}/gviz/tq?tqx=out:csv&sheet=Stock&t={int(time.time())}"
+      url_ingresos = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_NUEVO_ID}/gviz/tq?tqx=out:csv&sheet=Ingresos&t={int(time.time())}"
+      
+      df_maestro = pd.read_csv(url_maestro)
+      df_stock_form = pd.read_csv(url_stock)
+      df_ingresos_form = pd.read_csv(url_ingresos)
+      
+      # Limpiar nombres de columnas
+      df_maestro.columns = df_maestro.columns.str.strip()
+      df_stock_form.columns = df_stock_form.columns.str.strip()
+      df_ingresos_form.columns = df_ingresos_form.columns.str.strip()
 
-    tab_inv1, tab_inv2 = st.tabs(["📊 Estado y Alertas de Stock", "📝 Registrar Ingreso de Mercadería"])
+      # Limpieza numérica del maestro
+      cols_num_m = ['Precio Unitario', 'Consumo por tina', 'Stock de seguridad', 'Demora proveedor (dias)', 'Consumo Diario Promedio']
+      for col in cols_num_m:
+          df_maestro[col] = pd.to_numeric(df_maestro[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+
+      # 1. Procesar Ingresos desde el Form
+      df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+      df_ingresos_form['Costo total (pesos)'] = pd.to_numeric(df_ingresos_form['Costo total (pesos)'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+      
+      # Suma total de compras ingresadas por insumo
+      compras_totales = df_ingresos_form.groupby('Insumo')['Cantidad recibida'].sum().reset_index()
+      compras_totales.rename(columns={'Cantidad recibida': 'Total Ingresado'}, inplace=True)
+      
+      # Actualizar Precio Unitario promedio ponderado si se cargaron costos en el form de ingresos
+      df_ingresos_form['Precio Calculado'] = df_ingresos_form.apply(lambda x: x['Costo total (pesos)'] / x['Cantidad recibida'] if x['Cantidad recibida'] > 0 else 0, axis=1)
+      precios_nuevos = df_ingresos_form[df_ingresos_form['Precio Calculado'] > 0].groupby('Insumo')['Precio Calculado'].last().reset_index()
+
+      # 2. Procesar Recuentos de Stock Físico (Último recuento registrado)
+      df_stock_form['Stock fisico real'] = pd.to_numeric(df_stock_form['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+      ultimo_stock = df_stock_form.sort_values('Marca temporal').groupby('Insumo').last().reset_index()
+      ultimo_stock.rename(columns={'Stock fisico real': 'Stock Base Físico'}, inplace=True)
+
+      # 3. Calcular Tinas Totales Producidas en Planta (Módulo 3)
+      tinas_producidas_total = 0
+      try:
+          xls_prod_ins = pd.ExcelFile(URL_PRODUCCION)
+          hoja_p_ins = "2026" if "2026" in xls_prod_ins.sheet_names else xls_prod_ins.sheet_names[-1]
+          raw_p_ins = pd.read_excel(xls_prod_ins, sheet_name=hoja_p_ins, skiprows=6)
+          df_p_ins = pd.DataFrame()
+          df_p_ins['Fecha'] = pd.to_datetime(raw_p_ins.iloc[:, 0], format="mixed", dayfirst=True, errors='coerce')
+          df_p_ins['Lote'] = raw_p_ins.iloc[:, 1]
+          df_p_ins = df_p_ins.dropna(subset=['Fecha', 'Lote'])
+          _, df_p_ins['Grupo'] = zip(*df_p_ins['Lote'].apply(clasificar_lote_general))
+          tinas_producidas_total = len(df_p_ins[df_p_ins['Grupo'] == 'Coopagro'])
+      except Exception:
+          tinas_producidas_total = 0
+
+      # Cruzar toda la información con el Maestro de Insumos
+      df_master_calc = pd.merge(df_maestro, ultimo_stock[['Insumo', 'Stock Base Físico']], on='Insumo', how='left').fillna(0)
+      df_master_calc = pd.merge(df_master_calc, compras_totales, on='Insumo', how='left').fillna(0)
+      
+      # Si hay precios actualizados por las compras recientes, los pisamos en el maestro
+      if not precios_nuevos.empty:
+          df_master_calc = pd.merge(df_master_calc, precios_nuevos, on='Insumo', how='left')
+          df_master_calc['Precio Unitario'] = df_master_calc['Precio Calculado'].combine_first(df_master_calc['Precio Unitario'])
+          df_master_calc.drop(columns=['Precio Calculado'], inplace=True, errors='ignore')
+
+      # Consumo Teórico = Tinas Producidas * Consumo por tina estándar
+      df_master_calc['Consumo Teórico Producción'] = tinas_producidas_total * df_master_calc['Consumo por tina']
+      
+      # Stock Actual = (Último recuento físico + Compras por Form) - Consumo Teórico de Fábrica
+      df_master_calc['Stock Actual'] = (df_master_calc['Stock Base Físico'] + df_master_calc['Total Ingresado']) - df_master_calc['Consumo Teórico Producción']
+      df_master_calc['Stock Actual'] = df_master_calc['Stock Actual'].apply(lambda x: max(0.0, x))
+
+      # Alertas y Valorización
+      df_master_calc['Punto de Pedido'] = (df_master_calc['Consumo Diario Promedio'] * df_master_calc['Demora proveedor (dias)']) + df_master_calc['Stock de seguridad']
+      df_master_calc['Valorización ($)'] = df_master_calc['Stock Actual'] * df_master_calc['Precio Unitario']
+      df_master_calc['Estado'] = df_master_calc.apply(lambda x: '🔴 Crítico' if x['Stock Actual'] <= x['Stock de seguridad'] else ('🟡 Reponer' if x['Stock Actual'] <= x['Punto de Pedido'] else '🟢 Normal'), axis=1)
+
+    tab_inv1, tab_inv2 = st.tabs(["📊 Panel de Inventario y Alertas", "🧀 Costos de Producción por Tina"])
 
     with tab_inv1:
-        st.subheader("Control de Stock y Puntos de Pedido")
-        if not df_insumos.empty:
-            df_mostrar_ins = df_insumos.copy()
-            for col in ['Consumo por tina', 'Stock de seguridad', 'Demora proveedor (dias)']:
-                if col in df_mostrar_ins.columns:
-                    df_mostrar_ins[col] = pd.to_numeric(df_mostrar_ins[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
-            st.dataframe(df_mostrar_ins, use_container_width=True, hide_index=True)
-            
-            col_m1, col_m2, col_m3 = st.columns(3)
-            col_m1.metric("Insumos Monitoreados", len(df_mostrar_ins))
-            col_m2.metric("Alertas Activas", "0 insumos críticos")
-            col_m3.metric("Estado de Compras", "Normal")
-        else:
-            st.warning("No se encontraron registros en el Maestro de Insumos.")
+        st.subheader("Control de Stock en Tiempo Real")
+        valor_total = df_master_calc['Valorización ($)'].sum()
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Capital Inmovilizado", f"$ {formato_miles(valor_total)}")
+        c2.metric("Tinas Acumuladas", tinas_producidas_total)
+        c3.metric("Insumos Críticos", len(df_master_calc[df_master_calc['Estado'] == '🔴 Crítico']))
+        c4.metric("Insumos a Reponer", len(df_master_calc[df_master_calc['Estado'] == '🟡 Reponer']))
+
+        df_mostrar = df_master_calc[['Insumo', 'Categoría', 'Stock Actual', 'Unidad', 'Punto de Pedido', 'Estado', 'Valorización ($)']].copy()
+        df_mostrar['Valorización ($)'] = df_mostrar['Valorización ($)'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
+        st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+        
+        st.info("💡 Este panel toma automáticamente los recuentos de tu pestaña 'Stock', suma las compras de la pestaña 'Ingresos' y descuenta el consumo real de las tinas de producción.")
 
     with tab_inv2:
-        st.subheader("Formulario de Ingreso de Remito de Insumos")
-        st.markdown("Registrá la entrada de mercadería para actualizar las existencias en planta.")
-        with st.form("form_ingreso_insumos"):
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                lista_insumos = df_insumos['Insumo'].tolist() if 'Insumo' in df_insumos.columns else ["Cloruro de calcio (32%)", "Sal Entrefina Celusal"]
-                insumo_seleccionado = st.selectbox("Seleccionar Insumo", lista_insumos)
-                cantidad_ingresada = st.number_input("Cantidad Recibida", min_value=0.0, step=1.0)
-            with col_f2:
-                nro_remito = st.text_input("Número de Remito / Factura")
-                proveedor = st.text_input("Proveedor")
-                
-            submitted = st.form_submit_button("💾 Guardar Ingreso de Mercadería")
-            if submitted:
-                if nro_remito and cantidad_ingresada > 0:
-                    st.success(f"¡Ingreso registrado con éxito! Remito: {nro_remito} - {cantidad_ingresada} unidades de {insumo_seleccionado}.")
-                else:
-                    st.warning("Por favor, completá el número de remito y una cantidad mayor a cero.")
+        st.subheader("Costo Variable Estándar por Tina")
+        df_receta = df_master_calc[df_master_calc['Consumo por tina'] > 0].copy()
+        df_receta['Costo en Tina ($)'] = df_receta['Consumo por tina'] * df_receta['Precio Unitario']
+        
+        costo_tina_total = df_receta['Costo en Tina ($)'].sum()
+        st.metric("Costo Total Insumos por Tina (Aditivos + Envases)", f"$ {formato_miles(costo_tina_total)}")
+        
+        df_receta_show = df_receta[['Insumo', 'Categoría', 'Consumo por tina', 'Unidad', 'Precio Unitario', 'Costo en Tina ($)']].copy()
+        df_receta_show['Precio Unitario'] = df_receta_show['Precio Unitario'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
+        df_receta_show['Costo en Tina ($)'] = df_receta_show['Costo en Tina ($)'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
+        
+        st.dataframe(df_receta_show, use_container_width=True, hide_index=True)
 
   except Exception as e:
-    st.error(f"Se produjo un error procesando el módulo de insumos: {e}")
+    st.error(f"Error procesando el módulo de insumos: {e}")
     st.code(traceback.format_exc())
