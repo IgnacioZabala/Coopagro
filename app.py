@@ -578,7 +578,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
       df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
 
-      _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
+      _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_MILKO, URL_BACSOMATIC)
       
       if not df_lab_raw.empty:
           df_lab_m = df_lab_raw.copy()
