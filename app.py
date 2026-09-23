@@ -284,7 +284,7 @@ with st.sidebar:
 # =========================================================================
 if modulo_principal == "🥛 Recepción y Calidad Coopagro":
   try:
-    df_raw, df_contactos_raw, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
+    df_raw, df_contactos_raw, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_MILKO, URL_BACSOMATIC)
     if df_raw.empty: st.error("El archivo de remitos está vacío o no se pudo acceder."); st.stop()
 
     df_contactos = pd.DataFrame()
