@@ -521,6 +521,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   now = datetime.datetime.now()
 
   def generar_pdf_mastellone_sin_logo(titulo, subtitulo, metricas, headers, df_datos, filas_mapeo, usable_width=190):
+      from fpdf import FPDF
       pdf = FPDF(orientation="P", unit="mm", format="A4")
       pdf.set_auto_page_break(auto=True, margin=15)
       pdf.add_page()
@@ -589,17 +590,24 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
       sheet_mhsa = next((s for s in xls_mastellone.sheet_names if "mhsa" in s.lower()), xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0])
+      
+      # LECTURA DEL EXCEL DIRECTAMENTE COMO TABLA (sin skiprows)
       df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
       
       df_mhsa = pd.DataFrame()
+      
+      # ---> CORRECCIÓN DE LOS ÍNDICES DE COLUMNAS <---
       df_mhsa["Fecha"] = pd.to_datetime(df_mhsa_raw.iloc[:, 0], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
       df_mhsa["N_Remito"] = df_mhsa_raw.iloc[:, 1]
-      df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2].apply(limpiar_tambo)
-      df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
-      df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa_raw.iloc[:, 4], errors="coerce").fillna(0)
-      df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa_raw.iloc[:, 7] if len(df_mhsa_raw.columns) > 7 else pd.NaT, errors="coerce")
+      df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 3].apply(limpiar_tambo)
+      df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 4]
+      df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa_raw.iloc[:, 6].astype(str).str.replace(',', '.'), errors="coerce").fillna(0)
+      df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa_raw.iloc[:, 10].astype(str).str.replace(',', '.'), errors="coerce") if len(df_mhsa_raw.columns) > 10 else pd.NaT
       
       df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
+      
+      # ---> FILTRO DE SEGURIDAD POR RANGO DE AÑOS VÁLIDOS <---
+      df_mhsa = df_mhsa[(df_mhsa["Fecha"].dt.year >= 2025) & (df_mhsa["Fecha"].dt.year <= 2028)]
       df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
       df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
 
