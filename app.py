@@ -1106,6 +1106,15 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
           tinas_mes = 0
           kilos_mes = 0.0
 
+      # ---> BLINDAJE DE TIPOS DE DATOS (CONVERSIÓN A STRING) PARA EVITAR ERROR DE MERGE <---
+      df_maestro['Insumo'] = df_maestro['Insumo'].astype(str).str.strip()
+      if not ultimo_stock.empty:
+          ultimo_stock['Insumo'] = ultimo_stock['Insumo'].astype(str).str.strip()
+      if not compras_totales.empty:
+          compras_totales['Insumo'] = compras_totales['Insumo'].astype(str).str.strip()
+      if not precios_nuevos.empty:
+          precios_nuevos['Insumo'] = precios_nuevos['Insumo'].astype(str).str.strip()
+
       df_master_calc = pd.merge(df_maestro, ultimo_stock[['Insumo', 'Stock Base Físico']], on='Insumo', how='left').fillna(0)
       df_master_calc = pd.merge(df_master_calc, compras_totales, on='Insumo', how='left').fillna(0)
       
