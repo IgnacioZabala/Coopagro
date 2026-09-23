@@ -591,13 +591,15 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
       sheet_mhsa = next((s for s in xls_mastellone.sheet_names if "mhsa" in s.lower()), xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0])
       
-      # LECTURA DEL EXCEL DIRECTAMENTE COMO TABLA
-      df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
+      # ---> LECTURA DEL EXCEL SIN dtype=str PARA PRESERVAR FECHAS NATIVAS <---
+      df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa)
       
       df_mhsa = pd.DataFrame()
       
-      # ---> CORRECCIÓN DE FECHAS (dd/mm/aaaa) E ÍNDICES DE COLUMNAS REALES <---
-      df_mhsa["Fecha"] = pd.to_datetime(df_mhsa_raw.iloc[:, 0], dayfirst=True, errors="coerce").dt.normalize()
+      # ---> CORRECCIÓN ESTRICTA DE FECHAS (dd/mm/aaaa) E ÍNDICES REALES <---
+      fechas_col = df_mhsa_raw.iloc[:, 0]
+      df_mhsa["Fecha"] = pd.to_datetime(fechas_col, format="%d/%m/%Y", errors="coerce").fillna(pd.to_datetime(fechas_col, dayfirst=True, errors="coerce")).dt.normalize()
+      
       df_mhsa["N_Remito"] = df_mhsa_raw.iloc[:, 1]
       df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2].apply(limpiar_tambo) # Col 2: N° Tambo
       df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]                          # Col 3: Tambo
@@ -606,7 +608,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       
       df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
       
-      # ---> FILTRO DE SEGURIDAD POR RANGO DE AÑOS VÁLIDOS <---
       df_mhsa = df_mhsa[(df_mhsa["Fecha"].dt.year >= 2025) & (df_mhsa["Fecha"].dt.year <= 2028)]
       df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
       df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
@@ -720,7 +721,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "UFC_Val" in df_m_disp: df_m_disp["UFC"] = df_m_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC_Val" in df_m_disp: df_m_disp["SCC"] = df_m_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
-            # ---> RENOMBRADO A "Num Tambo" SIN GUIONES <---
             df_m_disp = df_m_disp.rename(columns={"Num_Tambo": "Num Tambo"})
             
             cols = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura"]
