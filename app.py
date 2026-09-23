@@ -80,17 +80,17 @@ def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
     st.sidebar.warning(f"Error cargando remitos/contactos: {e}")
 
   try:
-    df_lab_temp = pd.read_excel(u_lab, header=None, nrows=20)
+    df_lab_temp = pd.read_excel(u_lab, header=None, nrows=20, engine='openpyxl')
     header_row = encontrar_fila_encabezado(df_lab_temp, ["sample", "fat", "protein", "grasa"])
-    df_lab = pd.read_excel(u_lab, header=header_row)
+    df_lab = pd.read_excel(u_lab, header=header_row, engine='openpyxl')
     df_lab.columns = df_lab.columns.astype(str).str.strip()
   except Exception as e:
     st.sidebar.warning(f"No se pudo cargar el archivo Milko: {e}")
 
   try:
-    df_bac_temp = pd.read_excel(u_bacsomatic, header=None, nrows=20)
+    df_bac_temp = pd.read_excel(u_bacsomatic, header=None, nrows=20, engine='openpyxl')
     header_row_bac = encontrar_fila_encabezado(df_bac_temp, ["id usuario", "ufc", "scc"])
-    df_bacsomatic = pd.read_excel(u_bacsomatic, header=header_row_bac)
+    df_bacsomatic = pd.read_excel(u_bacsomatic, header=header_row_bac, engine='openpyxl')
     df_bacsomatic.columns = df_bacsomatic.columns.astype(str).str.strip()
   except Exception as e:
     st.sidebar.warning(f"No se pudo cargar el archivo Bacsomatic: {e}")
@@ -154,11 +154,10 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   pdf.add_page()
   
   logo_y = 8
-  logo_w = 50  # Ancho proporcional en mm
+  logo_w = 50
   
   if os.path.exists("logo.png"):
     pdf.image("logo.png", x=(210 - logo_w) / 2, y=logo_y, w=logo_w)
-    # Espaciado dinámico seguro para evitar que el título pise el logo
     pdf.set_y(logo_y + 30 + 12)
   else:
     pdf.set_y(20)
@@ -189,28 +188,13 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   for row in df_datos.itertuples(index=False):
     for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
       val = fn_mapeo(row)
-      align = "L" if "Nombre" in headers_ajustados[i][0] or "Producto" in headers_ajustados[i][0] else "C"
+      align = "L" if "Nombre" in headers_ajustados[i][0] or "Producto" in headers_ajustados[i][0] or "Insumo" in headers_ajustados[i][0] else "C"
       pdf.cell(col_w, 7, str(val), 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
 
   output = pdf.output(dest="S")
   if isinstance(output, bytearray): return bytes(output)
   elif isinstance(output, str): return output.encode('latin1')
   return output
-
-def generar_pdf_panel_general(df_macro, periodo_titulo, total_litros, temp_prom, grasa_prom, prot_prom, ratio_gp, tambos_activos, df_ranking):
-  ratio_str = f"{ratio_gp:.2f}".replace(".", ",") if pd.notna(ratio_gp) else "S/D"
-  grasa_str = f"{grasa_prom:.2f}%".replace(".", ",") if pd.notna(grasa_prom) else "S/D"
-  prot_str = f"{prot_prom:.2f}%".replace(".", ",") if pd.notna(prot_prom) else "S/D"
-
-  metricas = [
-      f"Tambos Activos: {tambos_activos} | Litros Totales: {formato_miles(total_litros)} L",
-      f"Temp. Promedio: {formato_temp(temp_prom)} | Grasa Ponderada: {grasa_str} | Prot. Ponderada: {prot_str}",
-      f"Ratio Grasa / Proteína: {ratio_str}",
-      "Ranking de Tambos por Volumen de Litros",
-  ]
-  headers = [("Código", 30), ("Nombre del Tambo", 100), ("Litros Totales", 60)]
-  mapeo = [lambda r: str(r.Num_Tambo), lambda r: str(r.Tambo), lambda r: formato_miles(r.Litros_Ticket)]
-  return generar_pdf_base("Informe de Recolección - Cooperativa", f"Período Evaluado: {periodo_titulo}", metricas, headers, df_ranking, mapeo)
 
 def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_visibles, es_mensual=False):
   titulo = "Resumen mensual de recolección" if es_mensual else "Resumen semanal de recolección"
@@ -403,15 +387,59 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         c4.metric("Proteína Ponderada", f"{prot_p:.2f}%".replace(".", ",") if pd.notna(prot_p) else "S/D")
         c5.metric("Ratio Grasa/Prot.", f"{ratio_gp:.2f}".replace(".", ",") if pd.notna(ratio_gp) else "S/D")
 
-        st.subheader("Ranking de Tambos por Volumen")
-        df_ranking = df_macro.groupby(["Tambo", "Num_Tambo"], as_index=False)["Litros_Ticket"].sum().sort_values("Litros_Ticket", ascending=False)
+        st.subheader("Ranking y Calidad por Tambo")
         
-        pdf_bytes = generar_pdf_panel_general(df_macro, periodo_texto, tot_litros, df_macro["Temperatura"].mean(), grasa_p, prot_p, ratio_gp, df_macro["Num_Tambo"].nunique(), df_ranking)
-        st.download_button("📥 Descargar Informe PDF", data=pdf_bytes, file_name=f"Informe_{periodo_texto.replace(' ', '_')}.pdf", mime="application/pdf")
+        ranking_data = []
+        for (num_t, tambo_n), group in df_macro.groupby(["Num_Tambo", "Tambo"]):
+            tot_l = group["Litros_Ticket"].sum()
+            g_pond = calcular_promedio_ponderado(group, "Grasa")
+            p_pond = calcular_promedio_ponderado(group, "Proteina")
+            ranking_data.append({
+                "Num_Tambo": str(num_t),
+                "Tambo": str(tambo_n),
+                "Litros_Ticket": tot_l,
+                "Grasa_Ponderada": g_pond,
+                "Proteina_Ponderada": p_pond
+            })
+        
+        df_ranking = pd.DataFrame(ranking_data).sort_values("Litros_Ticket", ascending=False)
+        
+        def generar_pdf_panel_general_con_calidad(df_macro, periodo_titulo, total_litros, temp_prom, grasa_prom, prot_prom, ratio_gp, tambos_activos, df_ranking):
+          ratio_str = f"{ratio_gp:.2f}".replace(".", ",") if pd.notna(ratio_gp) else "S/D"
+          grasa_str = f"{grasa_prom:.2f}%".replace(".", ",") if pd.notna(grasa_prom) else "S/D"
+          prot_str = f"{prot_prom:.2f}%".replace(".", ",") if pd.notna(prot_prom) else "S/D"
+
+          metricas = [
+              f"Tambos Activos: {tambos_activos} | Litros Totales: {formato_miles(total_litros)} L",
+              f"Temp. Promedio: {formato_temp(temp_prom)} | Grasa Ponderada: {grasa_str} | Prot. Ponderada: {prot_str}",
+              f"Ratio Grasa / Proteína: {ratio_str}",
+              "Ranking y Calidad de Tambos por Volumen",
+          ]
+          headers = [("Código", 25), ("Nombre del Tambo", 85), ("Litros Totales", 35), ("Grasa Pond.", 22), ("Prot. Pond.", 23)]
+          mapeo = [
+              lambda r: str(r.Num_Tambo),
+              lambda r: str(r.Tambo)[:28],
+              lambda r: formato_miles(r.Litros_Ticket),
+              lambda r: f"{r.Grasa_Ponderada:.2f}%".replace(".", ",") if pd.notna(r.Grasa_Ponderada) else "S/D",
+              lambda r: f"{r.Proteina_Ponderada:.2f}%".replace(".", ",") if pd.notna(r.Proteina_Ponderada) else "S/D"
+          ]
+          return generar_pdf_base("Informe de Recolección y Calidad - Cooperativa", f"Período Evaluado: {periodo_titulo}", metricas, headers, df_ranking, mapeo)
+
+        pdf_bytes = generar_pdf_panel_general_con_calidad(df_macro, periodo_texto, tot_litros, df_macro["Temperatura"].mean(), grasa_p, prot_p, ratio_gp, df_macro["Num_Tambo"].nunique(), df_ranking)
+        st.download_button("📥 Descargar Informe PDF con Calidad", data=pdf_bytes, file_name=f"Informe_Calidad_{periodo_texto.replace(' ', '_')}.pdf", mime="application/pdf")
         
         df_ranking_show = df_ranking.copy()
         df_ranking_show["Litros_Ticket"] = df_ranking_show["Litros_Ticket"].apply(formato_miles)
-        st.dataframe(df_ranking_show.rename(columns={"Tambo": "Nombre del Tambo", "Num_Tambo": "Código", "Litros_Ticket": "Litros Totales"}), hide_index=True, use_container_width=True)
+        df_ranking_show["Grasa_Ponderada"] = df_ranking_show["Grasa_Ponderada"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D")
+        df_ranking_show["Proteina_Ponderada"] = df_ranking_show["Proteina_Ponderada"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D")
+        
+        st.dataframe(df_ranking_show.rename(columns={
+            "Tambo": "Nombre del Tambo", 
+            "Num_Tambo": "Código", 
+            "Litros_Ticket": "Litros Totales",
+            "Grasa_Ponderada": "Grasa Ponderada",
+            "Proteina_Ponderada": "Proteína Ponderada"
+        }), hide_index=True, use_container_width=True)
 
     elif vista_coop == "Gestión y Reportes por Tambo":
       st.header("📄 Reportes por Tambo")
@@ -492,14 +520,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   import datetime
   now = datetime.datetime.now()
 
-  # --- Función exclusiva para imprimir PDF de Mastellone sin logo ---
   def generar_pdf_mastellone_sin_logo(titulo, subtitulo, metricas, headers, df_datos, filas_mapeo, usable_width=190):
-      from fpdf import FPDF
       pdf = FPDF(orientation="P", unit="mm", format="A4")
       pdf.set_auto_page_break(auto=True, margin=15)
       pdf.add_page()
       
-      # Forzamos el margen superior sin espacio para el logo
       pdf.set_y(20)
       pdf.set_font("Arial", "B", 12)
       pdf.cell(0, 6, titulo, ln=True, align="C")
@@ -641,13 +666,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     filtro_anio = st.sidebar.selectbox("Año", opciones_anio, index=opciones_anio.index(now.year) if now.year in opciones_anio else 0, key="m_anio_mastellone")
     filtro_mes = st.sidebar.selectbox("Mes", ["Todos"] + list(range(1, 13)), index=now.month, key="m_mes_mastellone")
 
-    # FILTRAMOS PRODUCCION
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
       if filtro_anio != "Todos": df_filtrado = df_filtrado[df_filtrado["Año"] == filtro_anio]
       if filtro_mes != "Todos": df_filtrado = df_filtrado[df_filtrado["Mes"] == filtro_mes]
 
-    # FILTRAMOS RECEPCION (MHSA) ANTES DE SUMAR
     df_mhsa_f = df_mhsa.copy()
     if not df_mhsa_f.empty:
       if filtro_anio != "Todos": df_mhsa_f = df_mhsa_f[df_mhsa_f["Año"] == filtro_anio]
@@ -660,7 +683,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_c_raw["Ratio"] = df_c_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
       df_consolidado = df_c_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio": "Ratio de Conversión (%)"})
 
-    # TOTALES DINÁMICOS
     total_litros_ingresados = df_mhsa_f["Litros_Ticket"].sum() if not df_mhsa_f.empty else 0.0
     total_litros_proc = df_filtrado["Litros Procesados"].sum() if len(df_filtrado) > 0 else 0
     total_prod_consolidado = df_consolidado["Producto Terminado"].sum() if not df_consolidado.empty else 0
@@ -696,9 +718,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             
             st.dataframe(df_m_disp[cols], use_container_width=True, hide_index=True)
 
-            # --- BOTÓN PARA IMPRIMIR PDF DE RECEPCIÓN (MHSA) ---
             st.markdown("---")
-            # Renombramos temporalmente para evitar problemas de getattr con acentos
             df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia"})
             
             headers_pdf_rec = [("Fecha", 25), ("Tambo", 70), ("Litros", 25), ("Temp", 20), ("Grasa", 25), ("Proteina", 25)]
@@ -729,7 +749,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_c_disp["Producto Terminado"] = df_c_disp["Producto Terminado"].apply(formato_miles)
             st.dataframe(df_c_disp, use_container_width=True, hide_index=True)
             
-            # --- BOTÓN DE PDF ACTUALIZADO CON RENDIMIENTO DE INGRESOS ---
             headers_pdf = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Ratio", 15)]
             mapeo_pdf = [
                 lambda r: r.Fecha if pd.notna(r.Fecha) else "",
@@ -885,7 +904,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         df_pdf_prep = df_p_show.rename(columns={"Litros Procesados": "Litros_Procesados", "Producto Terminado": "Producto_Terminado", "Rendimiento Lote": "Rendimiento_Lote"})
         pdf_coop_bytes = generar_pdf_base("Reporte de Producción y Rendimiento - Coopagro", subtitulo_periodo, metricas_pdf_coop, headers_pdf_c, df_pdf_prep, mapeo_pdf_c)
         
-        # Nombre de archivo con el número de mes adelante (ej: 8- Reporte de Producción Coopagro Agosto 2026.pdf)
         prefijo_nombre = f"{f_mes_p}- " if f_mes_p != "Todos" else "General - "
         nombre_archivo_pdf = f"{prefijo_nombre}Reporte de Producción Coopagro {mes_nombre_pdf} {anio_pdf}.pdf"
         
@@ -903,7 +921,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
   st.header("📦 Gestión de Insumos, Inventario y Costos Variables")
   
-  # --- Función auxiliar para generar el PDF de este módulo ---
   def generar_pdf_costos_mes(periodo_texto, valor_total, tinas_mes, kilos_mes, costo_insumos_total_mes, costo_por_kilo, df_datos):
       titulo = "Reporte Mensual de Insumos, Inventario y Costos"
       subtitulo = f"Período Evaluado: {periodo_texto}"
@@ -959,9 +976,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
       for col in cols_num_m:
           df_maestro[col] = pd.to_numeric(df_maestro[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
 
-      # ---------------------------------------------------------
-      # FILTROS DE PERÍODO EN EL PANEL LATERAL
-      # ---------------------------------------------------------
       st.sidebar.markdown("---")
       st.sidebar.subheader("📅 Filtro de Costos y Stock")
       
@@ -971,7 +985,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
       filtro_anio_costo = st.sidebar.selectbox("Año de Análisis", anios_disponibles, index=0, key="costo_anio")
       filtro_mes_costo = st.sidebar.selectbox("Mes de Análisis", meses_disponibles, format_func=lambda m: MESES_ES[m], index=8, key="costo_mes")
 
-      # 1. Procesar Ingresos desde el Form
       if not df_ingresos_form.empty and 'Cantidad recibida' in df_ingresos_form.columns:
           df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
           if 'Costo total (pesos)' in df_ingresos_form.columns:
@@ -995,7 +1008,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
           compras_totales = pd.DataFrame(columns=['Insumo', 'Total Ingresado'])
           precios_nuevos = pd.DataFrame(columns=['Insumo', 'Precio Calculado'])
 
-      # 2. Procesar Stock Físico
       if not df_stock_form.empty and 'Stock fisico real' in df_stock_form.columns:
           df_stock_form['Stock fisico real'] = pd.to_numeric(df_stock_form['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
           col_tiempo = next((c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()), df_stock_form.columns[0])
@@ -1004,7 +1016,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
       else:
           ultimo_stock = pd.DataFrame(columns=['Insumo', 'Stock Base Físico'])
 
-      # 3. Obtener Litros, Kilos y Tinas Calculadas en el Mes (Módulo 3 - Coopagro)
       tinas_mes = 0
       kilos_mes = 0.0
       litros_procesados_mes = 0.0
@@ -1029,13 +1040,11 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
           litros_procesados_mes = df_p_mes['Litros Procesados'].sum()
           kilos_mes = (df_p_mes['Prod Terminado'] + df_p_mes['PNC']).sum()
           
-          # Cálculo exacto de tinas: Litros Procesados / 8000 (redondeado)
           tinas_mes = round(litros_procesados_mes / 8000) if litros_procesados_mes > 0 else 0
       except Exception:
           tinas_mes = 0
           kilos_mes = 0.0
 
-      # Cruzar información
       df_master_calc = pd.merge(df_maestro, ultimo_stock[['Insumo', 'Stock Base Físico']], on='Insumo', how='left').fillna(0)
       df_master_calc = pd.merge(df_master_calc, compras_totales, on='Insumo', how='left').fillna(0)
       
