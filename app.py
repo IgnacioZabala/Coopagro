@@ -36,14 +36,14 @@ st.markdown(
 
 # --- IDs de Google Drive y Sheets (Blindados) ---
 FILE_ID_REMITOS = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
-FILE_ID_LAB = "1NNYjM5Aqg9iDdJ85UoALRim8P2A1kaUD"
+FILE_ID_MILKO = "1WR3orOFWXyyMqbVrKh792-8VBh2qN68O"
 FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 FILE_ID_MASTELLONE = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 ID_PRODUCCION = "1EH1koI566Bll9b_bqk9Ya4TenOIfczjt"
 SHEET_INSUMOS_ID = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
 
 URL_REMITOS = f"https://drive.google.com/uc?export=download&id={FILE_ID_REMITOS}"
-URL_LAB = f"https://drive.google.com/uc?export=download&id={FILE_ID_LAB}"
+URL_MILKO = f"https://drive.google.com/uc?export=download&id={FILE_ID_MILKO}"
 URL_BACSOMATIC = f"https://drive.google.com/uc?export=download&id={FILE_ID_BACSOMATIC}"
 URL_MASTELLONE = f"https://drive.google.com/uc?export=download&id={FILE_ID_MASTELLONE}"
 URL_PRODUCCION = f"https://drive.google.com/uc?export=download&id={ID_PRODUCCION}"
