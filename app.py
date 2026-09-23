@@ -1069,13 +1069,23 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
           compras_totales = pd.DataFrame(columns=['Insumo', 'Total Ingresado'])
           precios_nuevos = pd.DataFrame(columns=['Insumo', 'Precio Calculado'])
 
-      if not df_stock_form.empty and 'Stock fisico real' in df_stock_form.columns:
-          df_stock_form['Stock fisico real'] = pd.to_numeric(df_stock_form['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+      # ---> PROCESAMIENTO ROBUSTO DE STOCK (Soporta formato horizontal/ancho de Google Forms) <---
+      ultimo_stock = pd.DataFrame(columns=['Insumo', 'Stock Base Físico'])
+      if not df_stock_form.empty:
           col_tiempo = next((c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()), df_stock_form.columns[0])
-          ultimo_stock = df_stock_form.sort_values(col_tiempo).groupby('Insumo').last().reset_index()
-          ultimo_stock.rename(columns={'Stock fisico real': 'Stock Base Físico'}, inplace=True)
-      else:
-          ultimo_stock = pd.DataFrame(columns=['Insumo', 'Stock Base Físico'])
+          df_stock_form['Fecha_Dt'] = pd.to_datetime(df_stock_form[col_tiempo], format="mixed", dayfirst=True, errors='coerce')
+          
+          if 'Insumo' in df_stock_form.columns and 'Stock fisico real' in df_stock_form.columns and df_stock_form['Insumo'].notna().sum() > 0:
+              df_stock_form['Stock fisico real'] = pd.to_numeric(df_stock_form['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+              ultimo_stock = df_stock_form.sort_values('Fecha_Dt').groupby('Insumo').last().reset_index()
+              ultimo_stock.rename(columns={'Stock fisico real': 'Stock Base Físico'}, inplace=True)
+          else:
+              cols_excluir = [col_tiempo, 'Fecha_Dt', 'Marca temporal', 'Fecha de recuento', 'Insumo', 'Stock fisico real', 'Columna 5']
+              cols_insumos = [c for c in df_stock_form.columns if c not in cols_excluir and not c.startswith('Unnamed')]
+              
+              df_stock_long = df_stock_form.melt(id_vars=['Fecha_Dt'], value_vars=cols_insumos, var_name='Insumo', value_name='Stock Base Físico')
+              df_stock_long['Stock Base Físico'] = pd.to_numeric(df_stock_long['Stock Base Físico'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+              ultimo_stock = df_stock_long.sort_values('Fecha_Dt').groupby('Insumo').last().reset_index()
 
       tinas_mes = 0
       kilos_mes = 0.0
