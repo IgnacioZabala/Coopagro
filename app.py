@@ -1004,9 +1004,10 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
       else:
           ultimo_stock = pd.DataFrame(columns=['Insumo', 'Stock Base Físico'])
 
-      # 3. Obtener Tinas y Kilos Producidos en el Mes Seleccionado (Módulo 3)
+      # 3. Obtener Litros, Kilos y Tinas Calculadas en el Mes (Módulo 3 - Coopagro)
       tinas_mes = 0
       kilos_mes = 0.0
+      litros_procesados_mes = 0.0
       try:
           xls_prod_ins = pd.ExcelFile(URL_PRODUCCION)
           hoja_p_ins = "2026" if "2026" in xls_prod_ins.sheet_names else xls_prod_ins.sheet_names[-1]
@@ -1025,8 +1026,11 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
           
           df_p_mes = df_p_ins[(df_p_ins['Grupo'] == 'Coopagro') & (df_p_ins['Año'] == filtro_anio_costo) & (df_p_ins['Mes'] == filtro_mes_costo)]
           
-          tinas_mes = len(df_p_mes)
+          litros_procesados_mes = df_p_mes['Litros Procesados'].sum()
           kilos_mes = (df_p_mes['Prod Terminado'] + df_p_mes['PNC']).sum()
+          
+          # Cálculo exacto de tinas: Litros Procesados / 8000 (redondeado)
+          tinas_mes = round(litros_procesados_mes / 8000) if litros_procesados_mes > 0 else 0
       except Exception:
           tinas_mes = 0
           kilos_mes = 0.0
@@ -1079,7 +1083,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
 
         st.markdown("---")
         
-        # --- BOTÓN DE DESCARGA PDF ---
         periodo_pdf_str = f"{MESES_ES[filtro_mes_costo]} {filtro_anio_costo}"
         pdf_costos_bytes = generar_pdf_costos_mes(periodo_pdf_str, valor_total, tinas_mes, kilos_mes, costo_insumos_total_mes, costo_por_kilo, df_master_calc)
         st.download_button(
