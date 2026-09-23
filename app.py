@@ -273,19 +273,38 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
     df_contactos = pd.DataFrame()
     if not df_contactos_raw.empty:
-      df_c_temp = df_contactos_raw.copy()
-      df_c_temp.columns = df_c_temp.columns.astype(str).str.strip().str.lower().str.replace("ó", "o")
+      # Buscar fila de encabezado dinámicamente para la hoja Código Tambos
+      header_idx = -1
+      for i, row in df_contactos_raw.head(10).iterrows():
+          row_str = " ".join([str(x).lower() for x in row if pd.notna(x)])
+          if "tambo" in row_str and ("codigo" in row_str or "código" in row_str):
+              header_idx = i
+              break
+      
+      if header_idx != -1:
+          df_c_temp = df_contactos_raw.iloc[header_idx+1:].copy()
+          df_c_temp.columns = df_contactos_raw.iloc[header_idx].astype(str).str.strip().str.lower().str.replace("ó", "o")
+      else:
+          df_c_temp = df_contactos_raw.copy()
+          df_c_temp.columns = df_c_temp.columns.astype(str).str.strip().str.lower().str.replace("ó", "o")
+
       col_codigo = next((c for c in df_c_temp.columns if "codigo" in c and "viejo" not in c), None)
       if not col_codigo and len(df_c_temp.columns) > 1: col_codigo = df_c_temp.columns[1]
-      col_contacto = next((c for c in df_c_temp.columns if "contacto" in c or "nombre" in c), None)
+      
+      col_tambo_nom = next((c for c in df_c_temp.columns if "tambo" in c), None)
+      if not col_tambo_nom and len(df_c_temp.columns) > 2: col_tambo_nom = df_c_temp.columns[2]
+
+      col_contacto = next((c for c in df_c_temp.columns if "contacto" in c or "nombre" in c and "tambo" not in c), None)
       if not col_contacto and len(df_c_temp.columns) > 3: col_contacto = df_c_temp.columns[3]
+      
       col_email = next((c for c in df_c_temp.columns if "email" in c or "correo" in c), None)
       if not col_email and len(df_c_temp.columns) > 4: col_email = df_c_temp.columns[4]
 
-      if col_codigo is not None and col_contacto is not None and col_email is not None:
+      if col_codigo is not None:
         df_contactos["Num_Tambo"] = df_c_temp[col_codigo].apply(limpiar_tambo)
-        df_contactos["Contacto_Nombre"] = df_c_temp[col_contacto]
-        df_contactos["Email"] = df_c_temp[col_email]
+        if col_tambo_nom is not None: df_contactos["Tambo_Maestro"] = df_c_temp[col_tambo_nom]
+        if col_contacto is not None: df_contactos["Contacto_Nombre"] = df_c_temp[col_contacto]
+        if col_email is not None: df_contactos["Email"] = df_c_temp[col_email]
 
     df = df_raw.iloc[:, :10].copy()
     df.columns = ["Fecha", "N_Remito", "Num_Tambo", "Tambo", "Litros_Ticket", "Litros_Planilla", "Diferencia", "Temperatura", "Grasa", "Proteina"]
@@ -294,6 +313,15 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     df = df.dropna(subset=["Fecha"])
     for col in ["Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]:
       if col not in df.columns: df[col] = pd.NA
+
+    # ---> REEMPLAZAR #REF! O NOMBRES ROTOS CON EL MAESTRO DE TAMBOS <---
+    if not df_contactos.empty and "Tambo_Maestro" in df_contactos.columns:
+        mapeo_nombres = dict(zip(df_contactos["Num_Tambo"], df_contactos["Tambo_Maestro"]))
+        # Mapea el nombre desde el maestro, si no lo encuentra deja el original (o el #REF!)
+        df["Tambo"] = df["Num_Tambo"].map(mapeo_nombres).combine_first(df["Tambo"])
+        
+    # Limpieza final por si queda algún #REF! suelto sin mapear en el maestro
+    df["Tambo"] = df["Tambo"].replace("#REF!", "Desconocido")
 
     # Procesamiento Lab (Muestra 1 asegurada)
     if not df_lab_raw.empty:
