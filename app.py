@@ -1007,22 +1007,24 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 elif modulo_principal == "📦 Insumos, Inventario y Costos":
     st.header("📦 Gestión de Insumos, Inventario y Costos Variables")
   
-    def generar_pdf_costos_mes(periodo_texto, valor_total, tinas_mes, kilos_mes, costo_insumos_total_mes, costo_por_kilo, costo_aditivos_kilo, costo_envasado_kilo, costo_cip_kilo, df_datos):
+    def generar_pdf_costos_mes(periodo_texto, fecha_stock_txt, valor_total, tinas_mes, kilos_mes, costo_insumos_total_mes, costo_por_kilo, costo_aditivos_kilo, costo_envasado_kilo, costo_cip_kilo, df_datos):
         titulo = "Reporte Mensual de Insumos, Inventario y Costos"
-        subtitulo = f"Período Evaluado: {periodo_texto}"
+        subtitulo = f"Período Evaluado: {periodo_texto}  |  Stock al: {fecha_stock_txt}"
         metricas = [
-            f"Capital Inmovilizado (Físico): $ {formato_miles(valor_total)}",
+            f"Capital Inmovilizado (Stock Relevado): $ {formato_miles(valor_total)}",
             f"Tinas Producidas: {tinas_mes} | Kilos de Queso: {formato_miles(kilos_mes)} kg",
             f"Costo Total Insumos del Mes: $ {formato_miles(costo_insumos_total_mes)}",
             f"Costo Variable Total / Kilo Producido: $ {costo_por_kilo:,.2f}".replace(",", "."),
             f"   - Desglose / kg: Aditivos: $ {costo_aditivos_kilo:,.2f}".replace(",", ".") + f" | Envasado: $ {costo_envasado_kilo:,.2f}".replace(",", ".") + f" | CIP: $ {costo_cip_kilo:,.2f}".replace(",", ".")
         ]
-        headers = [("Insumo", 70), ("Categoría", 30), ("Stock Físico", 25), ("Unidad", 15), ("Valorización ($)", 50)]
+        # Columnas detalladas para el PDF de inventario
+        headers = [("Insumo", 60), ("Cat.", 20), ("Stock Físico", 25), ("Unidad", 15), ("Precio Unit.", 30), ("Valorización ($)", 50)]
         mapeo = [
-            lambda r: str(getattr(r, "Insumo", ""))[:30],
-            lambda r: str(getattr(r, "Categoría", ""))[:15],
+            lambda r: str(getattr(r, "Insumo", ""))[:28],
+            lambda r: str(getattr(r, "Categoría", ""))[:10],
             lambda r: formato_miles(getattr(r, "Stock Base Físico", 0)),
-            lambda r: str(getattr(r, "Unidad", "")),
+            lambda r: str(getattr(r, "Unidad", ""))[:8],
+            lambda r: f"$ {getattr(r, 'Precio Unitario', 0):,.2f}".replace(",", "."),
             lambda r: f"$ {getattr(r, 'Valorización Física ($)', 0):,.2f}".replace(",", ".")
         ]
         return generar_pdf_base(titulo, subtitulo, metricas, headers, df_datos, mapeo)
@@ -1209,7 +1211,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 lambda x: '🔴 Crítico' if x['Stock Actual'] <= x['Stock de seguridad'] else ('🟡 Reponer' if x['Stock Actual'] <= x['Punto de Pedido'] else '🟢 Normal'), axis=1
             )
 
-            # --- CÁLCULOS POR CATEGORÍA (ADITIVOS, ENVASADO, CIP) ---
+            # --- CÁLCULOS POR CATEGORÍA ---
             df_master_calc['Costo Total Insumos Mes'] = df_master_calc['Consumo Teórico Mes'] * df_master_calc['Precio Unitario']
             
             costo_insumos_total_mes = df_master_calc['Costo Total Insumos Mes'].sum()
@@ -1290,8 +1292,10 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
 
             st.markdown("---")
             periodo_pdf_str = f"{MESES_ES[filtro_mes_costo]} {filtro_anio_costo}"
+            fecha_stock_txt = f"{fecha_maxima_stock.strftime('%d/%m/%Y')}" if pd.notna(fecha_maxima_stock) else "Sin recuento registrado"
+            
             pdf_costos_bytes = generar_pdf_costos_mes(
-                periodo_pdf_str, valor_total_fisico, tinas_mes, kilos_mes, 
+                periodo_pdf_str, fecha_stock_txt, valor_total_fisico, tinas_mes, kilos_mes, 
                 costo_insumos_total_mes, costo_por_kilo, costo_aditivos_kilo, costo_envasado_kilo, costo_cip_kilo, df_master_calc
             )
             st.download_button(
