@@ -41,6 +41,7 @@ FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 FILE_ID_MASTELLONE = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 ID_PRODUCCION = "1EH1koI566Bll9b_bqk9Ya4TenOIfczjt"
 SHEET_INSUMOS_ID = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
+SHEET_MAESTRO_ID = "1VHJPBN1R2aECfni_5JKHACOZiC6LCFNKyOIPE7ye5yQ"
 
 URL_REMITOS = f"https://drive.google.com/uc?export=download&id={FILE_ID_REMITOS}"
 URL_MILKO = f"https://drive.google.com/uc?export=download&id={FILE_ID_MILKO}"
