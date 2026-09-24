@@ -782,9 +782,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 
             df_style = df_m_disp[cols].style
             if "UFC" in cols:
-                df_style = df_style.applymap(lambda x: highlight_bacsomatic(x, 200), subset=["UFC"])
+                df_style = df_style.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC"])
             if "SCC" in cols:
-                df_style = df_style.applymap(lambda x: highlight_bacsomatic(x, 400), subset=["SCC"])
+                df_style = df_style.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC"])
             
             # Mostramos la tabla con estilos en la interfaz
             st.dataframe(df_style, use_container_width=True, hide_index=True)
