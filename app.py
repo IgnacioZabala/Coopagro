@@ -1223,6 +1223,12 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
 
         with tab_inv1:
             st.subheader(f"Control de Alertas — {MESES_ES[filtro_mes_costo]} {filtro_anio_costo}")
+            
+            st.info("**Guía rápida de lectura:**\n"
+                    "• **Stock Proyectado:** Último recuento físico + Ingresos del mes - Consumo teórico de las tinas producidas en el mes.\n"
+                    "• **Punto de Pedido:** Consumo promedio durante los días de demora del proveedor + tu stock de seguridad.\n"
+                    "• **Estado:** Te avisa 🟡 **Reponer** si el stock proyectado perfora el punto de pedido, o 🔴 **Crítico** si toca tu stock de seguridad.")
+            
             c2, c3, c4 = st.columns(3)
             c2.metric(f"Tinas ({MESES_ES[filtro_mes_costo][:3]})", tinas_mes)
             c3.metric("Insumos Críticos", len(df_master_calc[df_master_calc['Estado'] == '🔴 Crítico']))
