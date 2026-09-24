@@ -1026,21 +1026,26 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
         return generar_pdf_base(titulo, subtitulo, metricas, headers, df_datos, mapeo)
 
     try:
-        with st.spinner("Sincronizando maestro, inventario y producción..."):
+        with st.spinner("Descargando base de datos de insumos..."):
             import time
             
-            # 1. URLs de Google Sheets (Corrección del espacio en "Maestro Insumos" con %20)
-            url_maestro = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/gviz/tq?tqx=out:csv&sheet=Maestro%20Insumos&t={int(time.time())}"
-            url_stock = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/gviz/tq?tqx=out:csv&sheet=Stock&t={int(time.time())}"
-            url_ingresos = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/gviz/tq?tqx=out:csv&sheet=Ingresos&t={int(time.time())}"
+            # 1. Nuevo método de lectura (Robusto, igual que Remitos)
+            URL_INSUMOS = f"https://drive.google.com/uc?export=download&id={SHEET_INSUMOS_ID}"
+            xls_insumos = pd.ExcelFile(URL_INSUMOS)
             
-            df_maestro = pd.read_csv(url_maestro)
-            df_stock_form = pd.read_csv(url_stock)
-            df_ingresos_form = pd.read_csv(url_ingresos)
+            # Búsqueda inteligente de pestañas
+            sheet_maestro = next((s for s in xls_insumos.sheet_names if "maestro" in s.lower()), None)
+            sheet_stock = next((s for s in xls_insumos.sheet_names if "stock" in s.lower()), None)
+            sheet_ingresos = next((s for s in xls_insumos.sheet_names if "ingresos" in s.lower()), None)
             
-            df_maestro.columns = df_maestro.columns.str.strip()
-            df_stock_form.columns = df_stock_form.columns.str.strip()
-            df_ingresos_form.columns = df_ingresos_form.columns.str.strip()
+            df_maestro = pd.read_excel(xls_insumos, sheet_name=sheet_maestro).dropna(how='all') if sheet_maestro else pd.DataFrame()
+            df_stock_form = pd.read_excel(xls_insumos, sheet_name=sheet_stock).dropna(how='all') if sheet_stock else pd.DataFrame()
+            df_ingresos_form = pd.read_excel(xls_insumos, sheet_name=sheet_ingresos).dropna(how='all') if sheet_ingresos else pd.DataFrame()
+
+            # Limpiar nombres de columnas
+            df_maestro.columns = df_maestro.columns.astype(str).str.strip()
+            df_stock_form.columns = df_stock_form.columns.astype(str).str.strip()
+            df_ingresos_form.columns = df_ingresos_form.columns.astype(str).str.strip()
 
             # Llave de cruce robusta para el Maestro
             if 'Insumo' in df_maestro.columns:
@@ -1048,6 +1053,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 df_maestro['Insumo_Key'] = df_maestro['Insumo'].str.lower()
             else:
                 df_maestro['Insumo_Key'] = 'desconocido'
+                st.error("⚠️ La columna 'Insumo' no se encontró en el Maestro.")
 
             # Asegurar columnas requeridas en el Maestro
             cols_requeridas_maestro = {
@@ -1082,7 +1088,9 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
                 df_ingresos_form['Costo total (pesos)'] = pd.to_numeric(df_ingresos_form.get('Costo total (pesos)', 0).astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
                 
-                col_fecha_ing = next((c for c in df_ingresos_form.columns if 'fecha' in c.lower() or 'marca' in c.lower()), None)
+                # Priorizar columna Fecha real sobre Marca temporal
+                col_fecha_ing = next((c for c in df_ingresos_form.columns if 'fecha' in c.lower()), next((c for c in df_ingresos_form.columns if 'marca' in c.lower()), None))
+                
                 if col_fecha_ing:
                     df_ingresos_form['Fecha_Dt'] = pd.to_datetime(df_ingresos_form[col_fecha_ing], format="mixed", dayfirst=True, errors='coerce')
                     df_ingresos_mes = df_ingresos_form[(df_ingresos_form['Fecha_Dt'].dt.year == filtro_anio_costo) & (df_ingresos_form['Fecha_Dt'].dt.month == filtro_mes_costo)]
@@ -1099,7 +1107,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 precios_nuevos = pd.DataFrame(columns=['Insumo_Key', 'Precio Calculado'])
 
             # =====================================================================
-            # STOCK FÍSICO (Unpivot / Melt con filtro de fecha)
+            # STOCK FÍSICO (Unpivot / Melt)
             # =====================================================================
             if not df_stock_form.empty:
                 cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
@@ -1120,7 +1128,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 df_stock_long['Insumo_Key'] = df_stock_long['Insumo'].astype(str).str.strip().str.lower()
 
-                # Filtrar stock hasta el mes seleccionado para asegurar lectura de fechas pasadas
+                # Filtrar stock priorizando Fecha de recuento
                 col_fecha_stock = next((c for c in cols_base if 'fecha' in c.lower()), cols_base[0] if cols_base else None)
                 if col_fecha_stock:
                     df_stock_long['Fecha_Dt'] = pd.to_datetime(df_stock_long[col_fecha_stock], format="mixed", dayfirst=True, errors='coerce')
@@ -1164,7 +1172,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 pass
 
             # =====================================================================
-            # CÁLCULOS MAESTROS Y MERGE POR INSUMO_KEY
+            # CÁLCULOS MAESTROS Y MERGE
             # =====================================================================
             df_master_calc = pd.merge(df_maestro, ultimo_stock[['Insumo_Key', 'Stock Base Físico']], on='Insumo_Key', how='left').fillna(0)
             df_master_calc = pd.merge(df_master_calc, compras_totales, on='Insumo_Key', how='left').fillna(0)
@@ -1174,8 +1182,8 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 if 'Precio Calculado' in df_master_calc.columns:
                     df_master_calc['Precio Unitario'] = df_master_calc['Precio Calculado'].combine_first(df_master_calc['Precio Unitario'])
 
-            # Limpiar basura del CSV vacío
-            df_master_calc = df_master_calc[~df_master_calc['Insumo'].isin(['nan', '0', 'Desconocido', ''])]
+            # Limpiar filas basura del maestro que puedan haber quedado
+            df_master_calc = df_master_calc[~df_master_calc['Insumo'].str.lower().isin(['nan', '0', 'desconocido', ''])]
 
             # Cálculos Finales
             df_master_calc['Consumo Teórico Mes'] = tinas_mes * df_master_calc['Consumo por tina']
@@ -1217,7 +1225,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             st.metric("Capital Inmovilizado Total", f"$ {formato_miles(valor_total)}")
 
             df_valorizado = df_master_calc[['Insumo', 'Categoría', 'Stock Actual', 'Unidad', 'Precio Unitario', 'Valorización ($)']].copy()
-            # Muestra los ítems ordenados por su valorización
             df_valorizado = df_valorizado.sort_values('Valorización ($)', ascending=False)
             
             df_valorizado['Precio Unitario'] = df_valorizado['Precio Unitario'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
