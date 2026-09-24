@@ -1120,27 +1120,31 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 # 1. Columnas Base (Marca Temporal y Fecha)
                 cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
                 
-                # 2. Descartamos las columnas vacías (C y D) y agrupamos las reales (E en adelante)
-                cols_ignorar = ['insumo', 'stock fisico real', 'columna 5']
-                cols_insumos = [c for c in df_stock_form.columns if c not in cols_base and c.lower() not in cols_ignorar and not c.lower().startswith('unnamed')]
+                # 2. Descartamos FÍSICAMENTE las columnas vacías (C y D) para que no rompan el melt
+                nombres_viejos = ['insumo', 'stock fisico real', 'columna 5']
+                cols_viejas = [c for c in df_stock_form.columns if c.lower() in nombres_viejos]
+                df_stock_limpio = df_stock_form.drop(columns=cols_viejas, errors='ignore')
+                
+                # 3. Agrupamos las reales (E en adelante) usando el DataFrame ya limpio
+                cols_insumos = [c for c in df_stock_limpio.columns if c not in cols_base and not c.lower().startswith('unnamed')]
 
-                # 3. Transformación Unpivot (Melt)
-                df_stock_long = df_stock_form.melt(
+                # 4. Transformación Unpivot (Melt)
+                df_stock_long = df_stock_limpio.melt(
                     id_vars=cols_base,
                     value_vars=cols_insumos,
                     var_name='Insumo_Form',
                     value_name='Stock fisico real'
                 )
 
-                # 4. Limpieza numérica
+                # 5. Limpieza numérica
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 df_stock_long['Stock fisico real'] = pd.to_numeric(df_stock_long['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce')
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 
-                # 5. Generar llave robusta
+                # 6. Generar llave robusta
                 df_stock_long['Insumo_Key'] = df_stock_long['Insumo_Form'].astype(str).str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
 
-                # 6. Filtro cronológico estricto
+                # 7. Filtro cronológico estricto
                 col_fecha_stock = next((c for c in cols_base if 'fecha' in c.lower()), cols_base[0] if cols_base else None)
                 
                 if col_fecha_stock:
