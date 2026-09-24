@@ -673,33 +673,34 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       if not df_bac_raw.empty:
           df_bac_m = df_bac_raw.copy()
-          col_sample_bac = next((c for c in df_bac_m.columns if any(x in str(c).lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[5] if len(df_bac_m.columns) > 5 else df_bac_m.columns[0])
+          col_sample_bac = df_bac_m.columns[5] if len(df_bac_m.columns) > 5 else df_bac_m.columns[0]
           
           df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
           df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
           
-          col_date_bac = next((c for c in df_bac_m.columns if any(x in str(c).lower() for x in ["fecha", "date", "analyzed"])), None)
+          col_date_bac = df_bac_m.columns[0] if len(df_bac_m.columns) > 0 else None
           df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], dayfirst=True, errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
           df_bac_m = df_bac_m.sort_values(by=["_id_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
           
-          map_cols_bac = {}
-          col_ufc = next((c for c in df_bac_m.columns if "ufc" in str(c).lower()), None)
-          col_scc = next((c for c in df_bac_m.columns if any(x in str(c).lower() for x in ["scc", "celulas", "somáticas"])), None)
+          df_bac_clean = pd.DataFrame()
+          df_bac_clean["Num_Tambo"] = df_bac_m["Num_Tambo"]
+          df_bac_clean["Fecha"] = df_bac_m["Fecha"]
           
-          if col_ufc: map_cols_bac[col_ufc] = "UFC_Val"
-          if col_scc: map_cols_bac[col_scc] = "SCC_Val"
+          if len(df_bac_m.columns) > 6:
+              df_bac_clean["UFC_Val"] = pd.to_numeric(df_bac_m.iloc[:, 6].astype(str).str.replace(",", "."), errors="coerce")
+          if len(df_bac_m.columns) > 7:
+              df_bac_clean["SCC_Val"] = pd.to_numeric(df_bac_m.iloc[:, 7].astype(str).str.replace(",", "."), errors="coerce")
           
-          if map_cols_bac:
-              df_bac_clean = df_bac_m[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
-              for c in map_cols_bac.values(): 
-                  df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-              
-              df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
-              if "UFC_Val" in df_mhsa: df_mhsa["UFC"] = df_mhsa["UFC_Val"]
-              if "SCC_Val" in df_mhsa: df_mhsa["SCC"] = df_mhsa["SCC_Val"]
+          df_bac_clean = df_bac_clean.dropna(subset=["Num_Tambo", "Fecha"])
+          
+          df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
+          if "UFC_Val" in df_mhsa.columns: 
+              df_mhsa["UFC"] = df_mhsa["UFC_Val"]
+          if "SCC_Val" in df_mhsa.columns: 
+              df_mhsa["SCC"] = df_mhsa["SCC_Val"]
 
     st.sidebar.subheader("Filtros Mastellone")
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
