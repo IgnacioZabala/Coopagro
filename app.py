@@ -1042,6 +1042,12 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             df_stock_form.columns = df_stock_form.columns.str.strip()
             df_ingresos_form.columns = df_ingresos_form.columns.str.strip()
 
+            # --- CORRECCIÓN: Forzar que "Insumo" siempre sea texto ---
+            if 'Insumo' in df_maestro.columns:
+                df_maestro['Insumo'] = df_maestro['Insumo'].astype(str).str.strip()
+            if 'Insumo' in df_ingresos_form.columns:
+                df_ingresos_form['Insumo'] = df_ingresos_form['Insumo'].astype(str).str.strip()
+
             # Asegurar que existan las columnas requeridas en el Maestro
             cols_requeridas_maestro = {
                 'Insumo': 'Desconocido', 'Categoría': 'General', 'Unidad': 'un',
@@ -1092,15 +1098,15 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             if not df_stock_form.empty:
                 cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
                 
-                # 1. Identificar y eliminar las columnas viejas para evitar conflictos con melt
+                # Identificar y eliminar las columnas viejas para evitar conflictos con melt
                 nombres_viejos = ['insumo', 'stock fisico real', 'columna 5']
                 cols_viejas = [c for c in df_stock_form.columns if c.lower() in nombres_viejos]
                 df_stock_limpio = df_stock_form.drop(columns=cols_viejas, errors='ignore')
                 
-                # 2. Las columnas de insumos son todas las restantes
+                # Las columnas de insumos son todas las restantes
                 cols_insumos = [c for c in df_stock_limpio.columns if c not in cols_base]
 
-                # 3. Transformamos de formato ANCHO a LARGO
+                # Transformamos de formato ANCHO a LARGO
                 df_stock_long = df_stock_limpio.melt(
                     id_vars=cols_base,
                     value_vars=cols_insumos,
@@ -1112,7 +1118,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 df_stock_long['Stock fisico real'] = pd.to_numeric(df_stock_long['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce')
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
-                df_stock_long['Insumo'] = df_stock_long['Insumo'].str.strip()
+                df_stock_long['Insumo'] = df_stock_long['Insumo'].astype(str).str.strip()
 
                 # Buscar el último registro cronológico por insumo
                 col_tiempo = cols_base[0] if cols_base else 'Marca temporal'
@@ -1191,6 +1197,9 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             c2.metric(f"Tinas Producción ({MESES_ES[filtro_mes_costo][:3]})", tinas_mes)
             c3.metric("Insumos Críticos", len(df_master_calc[df_master_calc['Estado'] == '🔴 Crítico']))
             c4.metric("Insumos a Reponer", len(df_master_calc[df_master_calc['Estado'] == '🟡 Reponer']))
+
+            # Evitar mostrar el Insumo "nan" que se genera por las filas vacías de Google Sheets
+            df_master_calc = df_master_calc[df_master_calc['Insumo'] != 'nan']
 
             df_mostrar = df_master_calc[['Insumo', 'Categoría', 'Stock Actual', 'Unidad', 'Punto de Pedido', 'Estado', 'Valorización ($)']].copy()
             df_mostrar['Valorización ($)'] = df_mostrar['Valorización ($)'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
