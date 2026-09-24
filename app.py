@@ -1027,10 +1027,10 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
 
     try:
         with st.spinner("Descargando base de datos de insumos..."):
-            import time
             
-            # 1. Nuevo método de lectura (Robusto, igual que Remitos)
-            URL_INSUMOS = f"https://drive.google.com/uc?export=download&id={SHEET_INSUMOS_ID}"
+            # 1. Nuevo método de lectura: Exportación NATIVA de Google Sheets a Excel
+            # Esto evita el Error 500 de Google Drive
+            URL_INSUMOS = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/export?format=xlsx"
             xls_insumos = pd.ExcelFile(URL_INSUMOS)
             
             # Búsqueda inteligente de pestañas
