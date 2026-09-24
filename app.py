@@ -1029,7 +1029,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
         with st.spinner("Sincronizando maestro, inventario y producción..."):
             import time
             
-            # URLs de Google Sheets (usando el ID del contexto general)
+            # URLs de Google Sheets
             url_maestro = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/gviz/tq?tqx=out:csv&sheet=Maestro_Insumos&t={int(time.time())}"
             url_stock = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/gviz/tq?tqx=out:csv&sheet=Stock&t={int(time.time())}"
             url_ingresos = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/gviz/tq?tqx=out:csv&sheet=Ingresos&t={int(time.time())}"
@@ -1063,7 +1063,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             meses_disponibles = list(MESES_ES.keys())
             
             filtro_anio_costo = st.sidebar.selectbox("Año de Análisis", anios_disponibles, index=0, key="costo_anio")
-            # Por defecto seleccionamos el mes actual (agosto = 8, pero puedes ajustarlo)
             filtro_mes_costo = st.sidebar.selectbox("Mes de Análisis", meses_disponibles, format_func=lambda m: MESES_ES[m], index=8, key="costo_mes")
 
             # Procesamiento de INGRESOS y cálculo del último precio
@@ -1092,22 +1091,30 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             # =====================================================================
             if not df_stock_form.empty:
                 cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
-                cols_viejas = ['insumo', 'stock fisico real', 'columna 5'] 
-                cols_insumos = [c for c in df_stock_form.columns if c not in cols_base and c.lower() not in cols_viejas]
+                
+                # 1. Identificar y eliminar las columnas viejas para evitar conflictos con melt
+                nombres_viejos = ['insumo', 'stock fisico real', 'columna 5']
+                cols_viejas = [c for c in df_stock_form.columns if c.lower() in nombres_viejos]
+                df_stock_limpio = df_stock_form.drop(columns=cols_viejas, errors='ignore')
+                
+                # 2. Las columnas de insumos son todas las restantes
+                cols_insumos = [c for c in df_stock_limpio.columns if c not in cols_base]
 
-                df_stock_long = df_stock_form.melt(
+                # 3. Transformamos de formato ANCHO a LARGO
+                df_stock_long = df_stock_limpio.melt(
                     id_vars=cols_base,
                     value_vars=cols_insumos,
                     var_name='Insumo',
                     value_name='Stock fisico real'
                 )
 
-                # Limpieza de nulos y conversión
+                # Limpieza de nulos y conversión a número
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 df_stock_long['Stock fisico real'] = pd.to_numeric(df_stock_long['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce')
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 df_stock_long['Insumo'] = df_stock_long['Insumo'].str.strip()
 
+                # Buscar el último registro cronológico por insumo
                 col_tiempo = cols_base[0] if cols_base else 'Marca temporal'
                 if col_tiempo in df_stock_long.columns:
                     ultimo_stock = df_stock_long.sort_values(col_tiempo).groupby('Insumo').last().reset_index()
