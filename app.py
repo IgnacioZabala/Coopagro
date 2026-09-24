@@ -1015,7 +1015,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             f"Tinas Producidas: {tinas_mes} | Kilos de Queso: {formato_miles(kilos_mes)} kg",
             f"Costo Total Insumos del Mes: $ {formato_miles(costo_insumos_total_mes)}",
             f"Costo Variable Total / Kilo Producido: $ {costo_por_kilo:,.2f}".replace(",", "."),
-            f"   ↳ Desglose: Aditivos $ {costo_aditivos_kilo:,.2f}".replace(",", ".") + f" / kg  |  Envasado $ {costo_envasado_kilo:,.2f}".replace(",", ".") + " / kg"
+            f"   - Desglose: Aditivos $ {costo_aditivos_kilo:,.2f}".replace(",", ".") + f" / kg  |  Envasado $ {costo_envasado_kilo:,.2f}".replace(",", ".") + " / kg"
         ]
         headers = [("Insumo", 70), ("Categoría", 30), ("Stock Físico", 25), ("Unidad", 15), ("Valorización ($)", 50)]
         mapeo = [
