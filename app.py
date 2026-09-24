@@ -671,8 +671,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               if "Proteina_Lab" in df_mhsa: df_mhsa["Proteina"] = df_mhsa["Proteina_Lab"]
               if "Crioscopia_Lab" in df_mhsa: df_mhsa["Crioscopia"] = df_mhsa["Crioscopia_Lab"]
 
+      # --- LECTURA EXACTA DEL BACSOMATIC (COLUMNAS F, Q y R) ---
       if not df_bac_raw.empty:
           df_bac_m = df_bac_raw.copy()
+          
+          # Buscamos la columna de identificación (Columna F -> índice 5)
           col_sample_bac = df_bac_m.columns[5] if len(df_bac_m.columns) > 5 else df_bac_m.columns[0]
           
           df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
@@ -689,10 +692,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_clean["Num_Tambo"] = df_bac_m["Num_Tambo"]
           df_bac_clean["Fecha"] = df_bac_m["Fecha"]
           
-          if len(df_bac_m.columns) > 6:
-              df_bac_clean["UFC_Val"] = pd.to_numeric(df_bac_m.iloc[:, 6].astype(str).str.replace(",", "."), errors="coerce")
-          if len(df_bac_m.columns) > 7:
-              df_bac_clean["SCC_Val"] = pd.to_numeric(df_bac_m.iloc[:, 7].astype(str).str.replace(",", "."), errors="coerce")
+          # Extracción directa por índices: Columna Q (16) = UFC | Columna R (17) = SCC
+          if len(df_bac_m.columns) > 16:
+              df_bac_clean["UFC_Val"] = pd.to_numeric(df_bac_m.iloc[:, 16].astype(str).str.replace(",", "."), errors="coerce")
+          if len(df_bac_m.columns) > 17:
+              df_bac_clean["SCC_Val"] = pd.to_numeric(df_bac_m.iloc[:, 17].astype(str).str.replace(",", "."), errors="coerce")
           
           df_bac_clean = df_bac_clean.dropna(subset=["Num_Tambo", "Fecha"])
           
@@ -754,6 +758,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "Grasa" in df_m_disp: df_m_disp["Grasa"] = df_m_disp["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Proteina" in df_m_disp: df_m_disp["Proteína"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Crioscopia" in df_m_disp: df_m_disp["Crioscopía"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
+            
+            # Formato de valores Bacsomatic como strings
             if "UFC" in df_m_disp: df_m_disp["UFC"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC" in df_m_disp: df_m_disp["SCC"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
@@ -763,7 +769,25 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]:
                 if col_extra in df_m_disp: cols.append(col_extra)
             
-            st.dataframe(df_m_disp[cols], use_container_width=True, hide_index=True)
+            # --- LÓGICA DE ESTILOS PARA COLORES ROJOS (UFC > 200, SCC > 400) ---
+            def highlight_bacsomatic(val, threshold):
+                try:
+                    if pd.notna(val) and str(val) != "-":
+                        num_val = float(str(val).replace(".", "").replace(",", "."))
+                        if num_val > threshold:
+                            return 'color: red; font-weight: bold'
+                except:
+                    pass
+                return ''
+                
+            df_style = df_m_disp[cols].style
+            if "UFC" in cols:
+                df_style = df_style.applymap(lambda x: highlight_bacsomatic(x, 200), subset=["UFC"])
+            if "SCC" in cols:
+                df_style = df_style.applymap(lambda x: highlight_bacsomatic(x, 400), subset=["SCC"])
+            
+            # Mostramos la tabla con estilos en la interfaz
+            st.dataframe(df_style, use_container_width=True, hide_index=True)
 
             st.markdown("---")
             df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia"})
