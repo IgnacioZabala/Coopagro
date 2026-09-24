@@ -1028,6 +1028,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
 
     try:
         with st.spinner("Descargando base de datos de insumos..."):
+            import time
             
             # 1. Leer archivo de Movimientos (Stock e Ingresos)
             URL_MOVIMIENTOS = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/export?format=xlsx"
@@ -1037,7 +1038,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             URL_MAESTRO = f"https://docs.google.com/spreadsheets/d/{SHEET_MAESTRO_ID}/export?format=xlsx"
             xls_maestro = pd.ExcelFile(URL_MAESTRO)
             
-            # Búsqueda inteligente de pestañas en sus respectivos archivos
+            # Búsqueda inteligente de pestañas
             sheet_maestro = next((s for s in xls_maestro.sheet_names if "maestro" in s.lower()), None)
             sheet_stock = next((s for s in xls_movimientos.sheet_names if "stock" in s.lower()), None)
             sheet_ingresos = next((s for s in xls_movimientos.sheet_names if "ingresos" in s.lower()), None)
@@ -1059,7 +1060,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 df_maestro['Insumo_Key'] = 'desconocido'
                 st.error("⚠️ La columna 'Insumo' no se encontró en el Maestro.")
 
-            # Asegurar columnas requeridas en el Maestro
+            # Asegurar columnas requeridas
             cols_requeridas_maestro = {
                 'Insumo': 'Desconocido', 'Categoría': 'General', 'Unidad': 'un',
                 'Precio Unitario': 0.0, 'Consumo por tina': 0.0, 'Stock de seguridad': 0.0,
@@ -1073,7 +1074,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             for col in cols_num_m:
                 df_maestro[col] = pd.to_numeric(df_maestro[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
 
-            # Filtros en el Sidebar
+            # Filtros Sidebar
             st.sidebar.markdown("---")
             st.sidebar.subheader("📅 Filtro de Costos y Stock")
             anios_disponibles = [2026, 2027]
@@ -1092,7 +1093,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
                 df_ingresos_form['Costo total (pesos)'] = pd.to_numeric(df_ingresos_form.get('Costo total (pesos)', 0).astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
                 
-                # Priorizar columna Fecha real sobre Marca temporal
                 col_fecha_ing = next((c for c in df_ingresos_form.columns if 'fecha' in c.lower()), next((c for c in df_ingresos_form.columns if 'marca' in c.lower()), None))
                 
                 if col_fecha_ing:
@@ -1111,38 +1111,50 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 precios_nuevos = pd.DataFrame(columns=['Insumo_Key', 'Precio Calculado'])
 
             # =====================================================================
-            # STOCK FÍSICO (Unpivot / Melt)
+            # STOCK FÍSICO (Híbrido: Formato Ancho o Largo)
             # =====================================================================
+            fecha_maxima_stock = pd.NaT
+
             if not df_stock_form.empty:
-                cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
-                nombres_viejos = ['insumo', 'stock fisico real', 'columna 5']
-                cols_viejas = [c for c in df_stock_form.columns if c.lower() in nombres_viejos]
-                df_stock_limpio = df_stock_form.drop(columns=cols_viejas, errors='ignore')
-                cols_insumos = [c for c in df_stock_limpio.columns if c not in cols_base]
+                # Determinar si ya es formato largo óptimo
+                es_formato_largo = 'Insumo' in df_stock_form.columns and 'Stock fisico real' in df_stock_form.columns and not df_stock_form['Insumo'].isna().all()
 
-                df_stock_long = df_stock_limpio.melt(
-                    id_vars=cols_base,
-                    value_vars=cols_insumos,
-                    var_name='Insumo',
-                    value_name='Stock fisico real'
-                )
+                if es_formato_largo:
+                    df_stock_long = df_stock_form.copy()
+                else:
+                    # Es formato ancho (ejecuta unpivot/melt)
+                    cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
+                    nombres_viejos = ['insumo', 'stock fisico real', 'columna 5']
+                    cols_viejas = [c for c in df_stock_form.columns if c.lower() in nombres_viejos]
+                    df_stock_limpio = df_stock_form.drop(columns=cols_viejas, errors='ignore')
+                    cols_insumos = [c for c in df_stock_limpio.columns if c not in cols_base]
 
+                    df_stock_long = df_stock_limpio.melt(
+                        id_vars=cols_base,
+                        value_vars=cols_insumos,
+                        var_name='Insumo',
+                        value_name='Stock fisico real'
+                    )
+
+                # Limpieza de nulos y conversión
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 df_stock_long['Stock fisico real'] = pd.to_numeric(df_stock_long['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce')
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 df_stock_long['Insumo_Key'] = df_stock_long['Insumo'].astype(str).str.strip().str.lower()
 
                 # Filtrar stock priorizando Fecha de recuento
-                col_fecha_stock = next((c for c in cols_base if 'fecha' in c.lower()), cols_base[0] if cols_base else None)
+                col_fecha_stock = next((c for c in df_stock_long.columns if 'fecha' in c.lower()), next((c for c in df_stock_long.columns if 'marca' in c.lower()), None))
+                
                 if col_fecha_stock:
                     df_stock_long['Fecha_Dt'] = pd.to_datetime(df_stock_long[col_fecha_stock], format="mixed", dayfirst=True, errors='coerce')
                     mask = (df_stock_long['Fecha_Dt'].dt.year == filtro_anio_costo) & (df_stock_long['Fecha_Dt'].dt.month == filtro_mes_costo)
                     df_stock_mes = df_stock_long[mask]
                     
                     if not df_stock_mes.empty:
-                        ultimo_stock = df_stock_mes.sort_values(col_fecha_stock).groupby('Insumo_Key').last().reset_index()
+                        ultimo_stock = df_stock_mes.sort_values('Fecha_Dt').groupby('Insumo_Key').last().reset_index()
+                        fecha_maxima_stock = df_stock_mes['Fecha_Dt'].max()
                     else:
-                        ultimo_stock = df_stock_long.sort_values(col_fecha_stock).groupby('Insumo_Key').last().reset_index()
+                        ultimo_stock = df_stock_long.sort_values('Fecha_Dt').groupby('Insumo_Key').last().reset_index()
                 else:
                     ultimo_stock = df_stock_long.groupby('Insumo_Key').last().reset_index()
                 
@@ -1186,10 +1198,8 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 if 'Precio Calculado' in df_master_calc.columns:
                     df_master_calc['Precio Unitario'] = df_master_calc['Precio Calculado'].combine_first(df_master_calc['Precio Unitario'])
 
-            # Limpiar filas basura del maestro que puedan haber quedado
             df_master_calc = df_master_calc[~df_master_calc['Insumo'].str.lower().isin(['nan', '0', 'desconocido', ''])]
 
-            # Cálculos Finales
             df_master_calc['Consumo Teórico Mes'] = tinas_mes * df_master_calc['Consumo por tina']
             df_master_calc['Stock Actual'] = (df_master_calc['Stock Base Físico'] + df_master_calc['Total Ingresado']) - df_master_calc['Consumo Teórico Mes']
             df_master_calc['Stock Actual'] = df_master_calc['Stock Actual'].apply(lambda x: max(0.0, x))
@@ -1224,7 +1234,14 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
         with tab_inv2:
-            st.subheader(f"Inventario y Valorización ({MESES_ES[filtro_mes_costo]} {filtro_anio_costo})")
+            # Título dinámico basado en la fecha de stock
+            if pd.notna(fecha_maxima_stock):
+                titulo_valorizado = f"Stock al {fecha_maxima_stock.day} de {MESES_ES[filtro_mes_costo]} de {filtro_anio_costo}"
+            else:
+                titulo_valorizado = f"Inventario y Valorización ({MESES_ES[filtro_mes_costo]} {filtro_anio_costo})"
+                
+            st.subheader(titulo_valorizado)
+            
             valor_total = df_master_calc['Valorización ($)'].sum()
             st.metric("Capital Inmovilizado Total", f"$ {formato_miles(valor_total)}")
 
