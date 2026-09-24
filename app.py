@@ -1029,7 +1029,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
         with st.spinner("Sincronizando maestro, inventario y producción..."):
             import time
             
-            # URLs de Google Sheets
+            # URLs de Google Sheets (usando el ID del contexto general)
             url_maestro = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/gviz/tq?tqx=out:csv&sheet=Maestro_Insumos&t={int(time.time())}"
             url_stock = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/gviz/tq?tqx=out:csv&sheet=Stock&t={int(time.time())}"
             url_ingresos = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/gviz/tq?tqx=out:csv&sheet=Ingresos&t={int(time.time())}"
@@ -1042,7 +1042,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             df_stock_form.columns = df_stock_form.columns.str.strip()
             df_ingresos_form.columns = df_ingresos_form.columns.str.strip()
 
-            # Asegurar que existan las columnas del Maestro
+            # Asegurar que existan las columnas requeridas en el Maestro
             cols_requeridas_maestro = {
                 'Insumo': 'Desconocido', 'Categoría': 'General', 'Unidad': 'un',
                 'Precio Unitario': 0.0, 'Consumo por tina': 0.0, 'Stock de seguridad': 0.0,
@@ -1056,15 +1056,17 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             for col in cols_num_m:
                 df_maestro[col] = pd.to_numeric(df_maestro[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
 
+            # Filtros en el Sidebar
             st.sidebar.markdown("---")
             st.sidebar.subheader("📅 Filtro de Costos y Stock")
             anios_disponibles = [2026, 2027]
             meses_disponibles = list(MESES_ES.keys())
             
             filtro_anio_costo = st.sidebar.selectbox("Año de Análisis", anios_disponibles, index=0, key="costo_anio")
+            # Por defecto seleccionamos el mes actual (agosto = 8, pero puedes ajustarlo)
             filtro_mes_costo = st.sidebar.selectbox("Mes de Análisis", meses_disponibles, format_func=lambda m: MESES_ES[m], index=8, key="costo_mes")
 
-            # Procesamiento de Ingresos y Precios dinámicos
+            # Procesamiento de INGRESOS y cálculo del último precio
             if not df_ingresos_form.empty and 'Cantidad recibida' in df_ingresos_form.columns:
                 df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
                 df_ingresos_form['Costo total (pesos)'] = pd.to_numeric(df_ingresos_form.get('Costo total (pesos)', 0).astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
@@ -1085,16 +1087,38 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 compras_totales = pd.DataFrame(columns=['Insumo', 'Total Ingresado'])
                 precios_nuevos = pd.DataFrame(columns=['Insumo', 'Precio Calculado'])
 
-            # Procesamiento del nuevo formato de STOCK (Lectura de la última toma física)
-            if not df_stock_form.empty and 'Stock fisico real' in df_stock_form.columns:
-                df_stock_form['Stock fisico real'] = pd.to_numeric(df_stock_form['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
-                col_tiempo = next((c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()), df_stock_form.columns[0])
-                ultimo_stock = df_stock_form.sort_values(col_tiempo).groupby('Insumo').last().reset_index()
+            # =====================================================================
+            # Procesamiento del formato "ANCHO" de STOCK (Unpivot con pd.melt)
+            # =====================================================================
+            if not df_stock_form.empty:
+                cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
+                cols_viejas = ['insumo', 'stock fisico real', 'columna 5'] 
+                cols_insumos = [c for c in df_stock_form.columns if c not in cols_base and c.lower() not in cols_viejas]
+
+                df_stock_long = df_stock_form.melt(
+                    id_vars=cols_base,
+                    value_vars=cols_insumos,
+                    var_name='Insumo',
+                    value_name='Stock fisico real'
+                )
+
+                # Limpieza de nulos y conversión
+                df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
+                df_stock_long['Stock fisico real'] = pd.to_numeric(df_stock_long['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce')
+                df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
+                df_stock_long['Insumo'] = df_stock_long['Insumo'].str.strip()
+
+                col_tiempo = cols_base[0] if cols_base else 'Marca temporal'
+                if col_tiempo in df_stock_long.columns:
+                    ultimo_stock = df_stock_long.sort_values(col_tiempo).groupby('Insumo').last().reset_index()
+                else:
+                    ultimo_stock = df_stock_long.groupby('Insumo').last().reset_index()
+                
                 ultimo_stock.rename(columns={'Stock fisico real': 'Stock Base Físico'}, inplace=True)
             else:
                 ultimo_stock = pd.DataFrame(columns=['Insumo', 'Stock Base Físico'])
 
-            # Extracción de Tinas y Kilos de Producción
+            # Extracción de Tinas y Kilos de Producción (del archivo principal)
             tinas_mes, kilos_mes, litros_procesados_mes = 0, 0.0, 0.0
             try:
                 xls_prod_ins = pd.ExcelFile(URL_PRODUCCION)
@@ -1117,34 +1141,38 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             except Exception:
                 pass
 
-            # Fusión de datos y cálculos críticos
+            # Fusión de datos y cálculos maestros
             df_master_calc = pd.merge(df_maestro, ultimo_stock[['Insumo', 'Stock Base Físico']], on='Insumo', how='left').fillna(0)
             df_master_calc = pd.merge(df_master_calc, compras_totales, on='Insumo', how='left').fillna(0)
             
+            # Actualizar precio si hubo compras nuevas
             if not precios_nuevos.empty and 'Insumo' in precios_nuevos.columns:
                 df_master_calc = pd.merge(df_master_calc, precios_nuevos, on='Insumo', how='left')
                 if 'Precio Calculado' in df_master_calc.columns:
                     df_master_calc['Precio Unitario'] = df_master_calc['Precio Calculado'].combine_first(df_master_calc['Precio Unitario'])
 
-            # 1. Cálculo de Consumo y Stock Actual
+            # 1. Consumo y Stock Actual
             df_master_calc['Consumo Teórico Mes'] = tinas_mes * df_master_calc['Consumo por tina']
             df_master_calc['Stock Actual'] = (df_master_calc['Stock Base Físico'] + df_master_calc['Total Ingresado']) - df_master_calc['Consumo Teórico Mes']
             df_master_calc['Stock Actual'] = df_master_calc['Stock Actual'].apply(lambda x: max(0.0, x))
 
-            # 2. PUNTO DE PEDIDO (Considerando demora del proveedor)
+            # 2. PUNTO DE PEDIDO (Stock de Seg. + Consumo Demora)
             df_master_calc['Punto de Pedido'] = (df_master_calc['Consumo Diario Promedio'] * df_master_calc['Demora proveedor (dias)']) + df_master_calc['Stock de seguridad']
             
             # 3. VALORIZACIÓN
             df_master_calc['Valorización ($)'] = df_master_calc['Stock Actual'] * df_master_calc['Precio Unitario']
             
             # Sistema de Alertas
-            df_master_calc['Estado'] = df_master_calc.apply(lambda x: '🔴 Crítico' if x['Stock Actual'] <= x['Stock de seguridad'] else ('🟡 Reponer' if x['Stock Actual'] <= x['Punto de Pedido'] else '🟢 Normal'), axis=1)
+            df_master_calc['Estado'] = df_master_calc.apply(
+                lambda x: '🔴 Crítico' if x['Stock Actual'] <= x['Stock de seguridad'] else ('🟡 Reponer' if x['Stock Actual'] <= x['Punto de Pedido'] else '🟢 Normal'), axis=1
+            )
 
             # 4. COSTOS VARIABLES POR KILO DE QUESO
             df_master_calc['Costo Total Insumos Mes'] = df_master_calc['Consumo Teórico Mes'] * df_master_calc['Precio Unitario']
             costo_insumos_total_mes = df_master_calc['Costo Total Insumos Mes'].sum()
             costo_por_kilo = (costo_insumos_total_mes / kilos_mes) if kilos_mes > 0 else 0.0
 
+        # Pestañas de Visualización en Streamlit
         tab_inv1, tab_inv2 = st.tabs(["📊 Panel de Inventario y Alertas", f"🧀 Costos y Rendimiento ({MESES_ES[filtro_mes_costo]} {filtro_anio_costo})"])
 
         with tab_inv1:
