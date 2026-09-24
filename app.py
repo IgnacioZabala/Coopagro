@@ -582,7 +582,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       for row in df_datos.itertuples(index=False):
           for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
               val = fn_mapeo(row)
-              align = "L" if "Nombre" in headers_ajustados[i][0] or "Tambo" in headers_ajustados[i][0] or "Producto" in headers_ajustados[i][0] else "C"
+              align = "L" if "Nombre" in headers_ajustados[i][0] or "Producto" in headers_ajustados[i][0] else "C"
               pdf.cell(col_w, 7, str(val), 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
 
       output = pdf.output(dest="S")
@@ -666,27 +666,19 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               df_milko_clean = df_lab_m[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
               for c in map_cols.values(): 
                   df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-              
-              # CRUCE ORIGINAL (Mismo Día)
               df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
-              
-              # CRUCE FALLBACK (+1 Día)
-              df_fallback = df_mhsa[["Num_Tambo", "Fecha"]].copy()
-              df_fallback["Fecha_Buscada"] = df_fallback["Fecha"] + pd.Timedelta(days=1)
-              df_milko_fallback = df_milko_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-              df_fallback = pd.merge(df_fallback, df_milko_fallback, on=["Num_Tambo", "Fecha_Buscada"], how="left")
-              
-              for c in map_cols.values():
-                  if c in df_mhsa.columns and c in df_fallback.columns:
-                      df_mhsa[c] = df_mhsa[c].combine_first(df_fallback[c])
+              if "Grasa_Lab" in df_mhsa: df_mhsa["Grasa"] = df_mhsa["Grasa_Lab"]
+              if "Proteina_Lab" in df_mhsa: df_mhsa["Proteina"] = df_mhsa["Proteina_Lab"]
+              if "Crioscopia_Lab" in df_mhsa: df_mhsa["Crioscopia"] = df_mhsa["Crioscopia_Lab"]
 
       if not df_bac_raw.empty:
           df_bac_m = df_bac_raw.copy()
-          col_sample_bac = df_bac_m.columns[5] if len(df_bac_m.columns) > 5 else df_bac_m.columns[0]
+          col_sample_bac = next((c for c in df_bac_m.columns if any(x in str(c).lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[5] if len(df_bac_m.columns) > 5 else df_bac_m.columns[0])
           
           df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
           df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
-          col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
+          
+          col_date_bac = next((c for c in df_bac_m.columns if any(x in str(c).lower() for x in ["fecha", "date", "analyzed"])), None)
           df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], dayfirst=True, errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
@@ -694,8 +686,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m = df_bac_m.sort_values(by=["_id_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
           
           map_cols_bac = {}
-          col_ufc = next((c for c in df_bac_m.columns if "ufc" in c.lower()), None)
-          col_scc = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["scc", "celulas", "somáticas"])), None)
+          col_ufc = next((c for c in df_bac_m.columns if "ufc" in str(c).lower()), None)
+          col_scc = next((c for c in df_bac_m.columns if any(x in str(c).lower() for x in ["scc", "celulas", "somáticas"])), None)
+          
           if col_ufc: map_cols_bac[col_ufc] = "UFC_Val"
           if col_scc: map_cols_bac[col_scc] = "SCC_Val"
           
@@ -704,18 +697,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               for c in map_cols_bac.values(): 
                   df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
               
-              # CRUCE ORIGINAL (Mismo Día)
               df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
-              
-              # CRUCE FALLBACK (+1 Día)
-              df_fallback_bac = df_mhsa[["Num_Tambo", "Fecha"]].copy()
-              df_fallback_bac["Fecha_Buscada"] = df_fallback_bac["Fecha"] + pd.Timedelta(days=1)
-              df_bac_fallback = df_bac_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-              df_fallback_bac = pd.merge(df_fallback_bac, df_bac_fallback, on=["Num_Tambo", "Fecha_Buscada"], how="left")
-              
-              for c in map_cols_bac.values():
-                  if c in df_mhsa.columns and c in df_fallback_bac.columns:
-                      df_mhsa[c] = df_mhsa[c].combine_first(df_fallback_bac[c])
+              if "UFC_Val" in df_mhsa: df_mhsa["UFC"] = df_mhsa["UFC_Val"]
+              if "SCC_Val" in df_mhsa: df_mhsa["SCC"] = df_mhsa["SCC_Val"]
 
     st.sidebar.subheader("Filtros Mastellone")
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
@@ -761,51 +745,31 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     with tab1:
         st.subheader("Recepción y Calidad de Tambos Mastellone")
         if not df_mhsa_f.empty:
-            # Cálculo del ratio grasa / proteína ponderado para los tambos con datos
-            df_val_gp = df_mhsa_f.dropna(subset=["Litros_Ticket", "Grasa_Lab", "Proteina_Lab"])
-            if not df_val_gp.empty:
-                tot_l_gp = df_val_gp["Litros_Ticket"].sum()
-                g_pond_m = (df_val_gp["Grasa_Lab"] * df_val_gp["Litros_Ticket"]).sum() / tot_l_gp if tot_l_gp > 0 else pd.NA
-                p_pond_m = (df_val_gp["Proteina_Lab"] * df_val_gp["Litros_Ticket"]).sum() / tot_l_gp if tot_l_gp > 0 else pd.NA
-                ratio_gp_m = g_pond_m / p_pond_m if (pd.notna(g_pond_m) and pd.notna(p_pond_m) and p_pond_m > 0) else pd.NA
-            else:
-                g_pond_m, p_pond_m, ratio_gp_m = pd.NA, pd.NA, pd.NA
-
-            # Métricas específicas de calidad en recepción
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Grasa Ponderada", f"{g_pond_m:.2f}%".replace(".", ",") if pd.notna(g_pond_m) else "S/D")
-            m2.metric("Proteína Ponderada", f"{p_pond_m:.2f}%".replace(".", ",") if pd.notna(p_pond_m) else "S/D")
-            m3.metric("Ratio Grasa / Prot.", f"{ratio_gp_m:.2f}".replace(".", ",") if pd.notna(ratio_gp_m) else "S/D")
-            m4.metric("Registros con Calidad", len(df_val_gp))
-
-            st.markdown("---")
-
             df_m_disp = df_mhsa_f.sort_values(by=["Fecha", "Num_Tambo"]).copy()
             df_m_disp["Fecha"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
             df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
             df_m_disp["Temperatura"] = df_m_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
-            if "Grasa_Lab" in df_m_disp: df_m_disp["Grasa"] = df_m_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Proteina_Lab" in df_m_disp: df_m_disp["Proteína"] = df_m_disp["Proteina_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Crioscopia_Lab" in df_m_disp: df_m_disp["Crioscopía"] = df_m_disp["Crioscopia_Lab"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
-            if "UFC_Val" in df_m_disp: df_m_disp["UFC"] = df_m_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
-            if "SCC_Val" in df_m_disp: df_m_disp["SCC"] = df_m_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            if "Grasa" in df_m_disp: df_m_disp["Grasa"] = df_m_disp["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            if "Proteina" in df_m_disp: df_m_disp["Proteína"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            if "Crioscopia" in df_m_disp: df_m_disp["Crioscopía"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
+            if "UFC" in df_m_disp: df_m_disp["UFC"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            if "SCC" in df_m_disp: df_m_disp["SCC"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
-            df_m_disp["Código"] = df_m_disp["Num_Tambo"]
+            df_m_disp = df_m_disp.rename(columns={"Num_Tambo": "Num Tambo"})
             
-            cols = ["Fecha", "Código", "Tambo", "Litros", "Temperatura"]
+            cols = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura"]
             for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]:
                 if col_extra in df_m_disp: cols.append(col_extra)
             
             st.dataframe(df_m_disp[cols], use_container_width=True, hide_index=True)
 
             st.markdown("---")
-            df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia", "Código": "Codigo"})
+            df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia"})
             
-            headers_pdf_rec = [("Fecha", 22), ("Código", 20), ("Tambo", 68), ("Litros", 22), ("Temp", 18), ("Grasa", 20), ("Proteina", 20)]
+            headers_pdf_rec = [("Fecha", 25), ("Tambo", 70), ("Litros", 25), ("Temp", 20), ("Grasa", 25), ("Proteina", 25)]
             mapeo_pdf_rec = [
                 lambda r: r.Fecha if pd.notna(r.Fecha) else "",
-                lambda r: str(r.Codigo),
                 lambda r: str(r.Tambo)[:25],
                 lambda r: str(r.Litros),
                 lambda r: str(getattr(r, "Temperatura", "-")),
@@ -815,11 +779,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             
             mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
             subt_rec = f"Período: {mes_str} {filtro_anio}"
-            ratio_gp_str = f"{ratio_gp_m:.2f}".replace(".", ",") if pd.notna(ratio_gp_m) else "S/D"
-            metricas_rec = [
-                f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L",
-                f"Ratio Grasa / Proteína Ponderado: {ratio_gp_str}"
-            ]
+            metricas_rec = [f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L"]
             
             pdf_rec_bytes = generar_pdf_mastellone_sin_logo("Reporte de Recepción y Calidad MHSA", subt_rec, metricas_rec, headers_pdf_rec, df_pdf_rec, mapeo_pdf_rec)
             st.download_button("📥 Descargar Reporte Recepción PDF", data=pdf_rec_bytes, file_name="Reporte_Recepcion_MHSA.pdf", mime="application/pdf")
