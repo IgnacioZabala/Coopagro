@@ -1011,18 +1011,18 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
         titulo = "Reporte Mensual de Insumos, Inventario y Costos"
         subtitulo = f"Período Evaluado: {periodo_texto}"
         metricas = [
-            f"Capital Inmovilizado en Stock: $ {formato_miles(valor_total)}",
+            f"Capital Inmovilizado (Físico): $ {formato_miles(valor_total)}",
             f"Tinas Producidas: {tinas_mes} | Kilos de Queso: {formato_miles(kilos_mes)} kg",
             f"Costo Total Insumos del Mes: $ {formato_miles(costo_insumos_total_mes)}",
             f"Costo Variable Insumos / Kilo Producido: $ {costo_por_kilo:,.2f}".replace(",", ".")
         ]
-        headers = [("Insumo", 70), ("Categoría", 30), ("Stock Actual", 25), ("Unidad", 15), ("Valorización ($)", 50)]
+        headers = [("Insumo", 70), ("Categoría", 30), ("Stock Físico", 25), ("Unidad", 15), ("Valorización ($)", 50)]
         mapeo = [
             lambda r: str(getattr(r, "Insumo", ""))[:30],
             lambda r: str(getattr(r, "Categoría", ""))[:15],
-            lambda r: formato_miles(getattr(r, "Stock Actual", 0)),
+            lambda r: formato_miles(getattr(r, "Stock Base Físico", 0)),
             lambda r: str(getattr(r, "Unidad", "")),
-            lambda r: f"$ {getattr(r, 'Valorización ($)', 0):,.2f}".replace(",", ".")
+            lambda r: f"$ {getattr(r, 'Valorización Física ($)', 0):,.2f}".replace(",", ".")
         ]
         return generar_pdf_base(titulo, subtitulo, metricas, headers, df_datos, mapeo)
 
@@ -1053,7 +1053,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             df_stock_form.columns = df_stock_form.columns.astype(str).str.strip()
             df_ingresos_form.columns = df_ingresos_form.columns.astype(str).str.strip()
 
-            # Llave de cruce ultra-robusta (elimina espacios y símbolos)
+            # Llave de cruce ultra-robusta
             if 'Insumo' in df_maestro.columns:
                 df_maestro['Insumo'] = df_maestro['Insumo'].astype(str).str.strip()
                 df_maestro['Insumo_Key'] = df_maestro['Insumo'].str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
@@ -1112,23 +1112,17 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 precios_nuevos = pd.DataFrame(columns=['Insumo_Key', 'Precio Calculado'])
 
             # =====================================================================
-            # STOCK FÍSICO (Unpivot del formato ancho exacto)
+            # STOCK FÍSICO
             # =====================================================================
             fecha_maxima_stock = pd.NaT
 
             if not df_stock_form.empty:
-                # 1. Columnas Base (Marca Temporal y Fecha)
                 cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
-                
-                # 2. Descartamos FÍSICAMENTE las columnas vacías (C y D) para que no rompan el melt
                 nombres_viejos = ['insumo', 'stock fisico real', 'columna 5']
                 cols_viejas = [c for c in df_stock_form.columns if c.lower() in nombres_viejos]
                 df_stock_limpio = df_stock_form.drop(columns=cols_viejas, errors='ignore')
-                
-                # 3. Agrupamos las reales (E en adelante) usando el DataFrame ya limpio
                 cols_insumos = [c for c in df_stock_limpio.columns if c not in cols_base and not c.lower().startswith('unnamed')]
 
-                # 4. Transformación Unpivot (Melt)
                 df_stock_long = df_stock_limpio.melt(
                     id_vars=cols_base,
                     value_vars=cols_insumos,
@@ -1136,15 +1130,11 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                     value_name='Stock fisico real'
                 )
 
-                # 5. Limpieza numérica
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 df_stock_long['Stock fisico real'] = pd.to_numeric(df_stock_long['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce')
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
-                
-                # 6. Generar llave robusta
                 df_stock_long['Insumo_Key'] = df_stock_long['Insumo_Form'].astype(str).str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
 
-                # 7. Filtro cronológico estricto
                 col_fecha_stock = next((c for c in cols_base if 'fecha' in c.lower()), cols_base[0] if cols_base else None)
                 
                 if col_fecha_stock:
@@ -1203,10 +1193,16 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             df_master_calc = df_master_calc[~df_master_calc['Insumo'].str.lower().isin(['nan', '0', 'desconocido', ''])]
 
             df_master_calc['Consumo Teórico Mes'] = tinas_mes * df_master_calc['Consumo por tina']
+            
+            # Stock Físico (El que se muestra en la pestaña de Valorización)
+            df_master_calc['Valorización Física ($)'] = df_master_calc['Stock Base Físico'] * df_master_calc['Precio Unitario']
+
+            # Stock Proyectado (El que se usa para las Alertas)
             df_master_calc['Stock Actual'] = (df_master_calc['Stock Base Físico'] + df_master_calc['Total Ingresado']) - df_master_calc['Consumo Teórico Mes']
             df_master_calc['Stock Actual'] = df_master_calc['Stock Actual'].apply(lambda x: max(0.0, x))
+            
             df_master_calc['Punto de Pedido'] = (df_master_calc['Consumo Diario Promedio'] * df_master_calc['Demora proveedor (dias)']) + df_master_calc['Stock de seguridad']
-            df_master_calc['Valorización ($)'] = df_master_calc['Stock Actual'] * df_master_calc['Precio Unitario']
+            df_master_calc['Valorización Proyectada ($)'] = df_master_calc['Stock Actual'] * df_master_calc['Precio Unitario']
             
             df_master_calc['Estado'] = df_master_calc.apply(
                 lambda x: '🔴 Crítico' if x['Stock Actual'] <= x['Stock de seguridad'] else ('🟡 Reponer' if x['Stock Actual'] <= x['Punto de Pedido'] else '🟢 Normal'), axis=1
@@ -1233,6 +1229,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             c4.metric("Insumos a Reponer", len(df_master_calc[df_master_calc['Estado'] == '🟡 Reponer']))
 
             df_mostrar = df_master_calc[['Insumo', 'Categoría', 'Stock Actual', 'Unidad', 'Punto de Pedido', 'Estado']].copy()
+            df_mostrar = df_mostrar.rename(columns={'Stock Actual': 'Stock Proyectado'})
             st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
         with tab_inv2:
@@ -1243,14 +1240,15 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 
             st.subheader(titulo_valorizado)
             
-            valor_total = df_master_calc['Valorización ($)'].sum()
-            st.metric("Capital Inmovilizado Total", f"$ {formato_miles(valor_total)}")
+            valor_total_fisico = df_master_calc['Valorización Física ($)'].sum()
+            st.metric("Capital Inmovilizado (Stock Relevado)", f"$ {formato_miles(valor_total_fisico)}")
 
-            df_valorizado = df_master_calc[['Insumo', 'Categoría', 'Stock Actual', 'Unidad', 'Precio Unitario', 'Valorización ($)']].copy()
-            df_valorizado = df_valorizado.sort_values('Valorización ($)', ascending=False)
+            df_valorizado = df_master_calc[['Insumo', 'Categoría', 'Stock Base Físico', 'Unidad', 'Precio Unitario', 'Valorización Física ($)']].copy()
+            df_valorizado = df_valorizado.rename(columns={'Stock Base Físico': 'Stock Físico (Relevado)'})
+            df_valorizado = df_valorizado.sort_values('Valorización Física ($)', ascending=False)
             
             df_valorizado['Precio Unitario'] = df_valorizado['Precio Unitario'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
-            df_valorizado['Valorización ($)'] = df_valorizado['Valorización ($)'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
+            df_valorizado['Valorización Física ($)'] = df_valorizado['Valorización Física ($)'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
             
             st.dataframe(df_valorizado, use_container_width=True, hide_index=True)
 
@@ -1263,7 +1261,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
 
             st.markdown("---")
             periodo_pdf_str = f"{MESES_ES[filtro_mes_costo]} {filtro_anio_costo}"
-            pdf_costos_bytes = generar_pdf_costos_mes(periodo_pdf_str, valor_total, tinas_mes, kilos_mes, costo_insumos_total_mes, costo_por_kilo, df_master_calc)
+            pdf_costos_bytes = generar_pdf_costos_mes(periodo_pdf_str, valor_total_fisico, tinas_mes, kilos_mes, costo_insumos_total_mes, costo_por_kilo, df_master_calc)
             st.download_button(
                 "📥 Descargar Reporte Completo PDF",
                 data=pdf_costos_bytes,
