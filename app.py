@@ -1017,16 +1017,23 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             f"Costo Variable Total / Kilo Producido: $ {costo_por_kilo:,.2f}".replace(",", "."),
             f"   - Desglose / kg: Aditivos: $ {costo_aditivos_kilo:,.2f}".replace(",", ".") + f" | Envasado: $ {costo_envasado_kilo:,.2f}".replace(",", ".") + f" | CIP: $ {costo_cip_kilo:,.2f}".replace(",", ".")
         ]
+        
+        # Preparamos un DataFrame con nombres limpios para evitar el conflicto de itertuples()
+        df_pdf = df_datos.copy()
+        df_pdf['Stock_Fisico_Fmt'] = df_pdf['Stock Base Físico']
+        df_pdf['Precio_Unit_Fmt'] = df_pdf['Precio Unitario']
+        df_pdf['Valorizacion_Fisica_Fmt'] = df_pdf['Valorización Física ($)']
+
         headers = [("Insumo", 60), ("Cat.", 20), ("Stock Físico", 25), ("Unidad", 15), ("Precio Unit.", 30), ("Valorización ($)", 50)]
         mapeo = [
             lambda r: str(getattr(r, "Insumo", ""))[:28],
             lambda r: str(getattr(r, "Categoría", ""))[:10],
-            lambda r: formato_miles(getattr(r, "Stock Base Físico", 0)),
+            lambda r: formato_miles(getattr(r, "Stock_Fisico_Fmt", 0)),
             lambda r: str(getattr(r, "Unidad", ""))[:8],
-            lambda r: f"$ {getattr(r, 'Precio Unitario', 0):,.2f}".replace(",", "."),
-            lambda r: f"$ {getattr(r, 'Valorización Física ($)', 0):,.2f}".replace(",", ".")
+            lambda r: f"$ {getattr(r, 'Precio_Unit_Fmt', 0):,.2f}".replace(",", "."),
+            lambda r: f"$ {getattr(r, 'Valorizacion_Fisica_Fmt', 0):,.2f}".replace(",", ".")
         ]
-        return generar_pdf_base(titulo, subtitulo, metricas, headers, df_datos, mapeo)
+        return generar_pdf_base(titulo, subtitulo, metricas, headers, df_pdf, mapeo)
 
     try:
         with st.spinner("Descargando base de datos de insumos..."):
