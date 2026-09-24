@@ -1029,19 +1029,22 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     try:
         with st.spinner("Descargando base de datos de insumos..."):
             
-            # 1. Nuevo método de lectura: Exportación NATIVA de Google Sheets a Excel
-            # Esto evita el Error 500 de Google Drive
-            URL_INSUMOS = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/export?format=xlsx"
-            xls_insumos = pd.ExcelFile(URL_INSUMOS)
+            # 1. Leer archivo de Movimientos (Stock e Ingresos)
+            URL_MOVIMIENTOS = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/export?format=xlsx"
+            xls_movimientos = pd.ExcelFile(URL_MOVIMIENTOS)
             
-            # Búsqueda inteligente de pestañas
-            sheet_maestro = next((s for s in xls_insumos.sheet_names if "maestro" in s.lower()), None)
-            sheet_stock = next((s for s in xls_insumos.sheet_names if "stock" in s.lower()), None)
-            sheet_ingresos = next((s for s in xls_insumos.sheet_names if "ingresos" in s.lower()), None)
+            # 2. Leer archivo del Maestro
+            URL_MAESTRO = f"https://docs.google.com/spreadsheets/d/{SHEET_MAESTRO_ID}/export?format=xlsx"
+            xls_maestro = pd.ExcelFile(URL_MAESTRO)
             
-            df_maestro = pd.read_excel(xls_insumos, sheet_name=sheet_maestro).dropna(how='all') if sheet_maestro else pd.DataFrame()
-            df_stock_form = pd.read_excel(xls_insumos, sheet_name=sheet_stock).dropna(how='all') if sheet_stock else pd.DataFrame()
-            df_ingresos_form = pd.read_excel(xls_insumos, sheet_name=sheet_ingresos).dropna(how='all') if sheet_ingresos else pd.DataFrame()
+            # Búsqueda inteligente de pestañas en sus respectivos archivos
+            sheet_maestro = next((s for s in xls_maestro.sheet_names if "maestro" in s.lower()), None)
+            sheet_stock = next((s for s in xls_movimientos.sheet_names if "stock" in s.lower()), None)
+            sheet_ingresos = next((s for s in xls_movimientos.sheet_names if "ingresos" in s.lower()), None)
+            
+            df_maestro = pd.read_excel(xls_maestro, sheet_name=sheet_maestro).dropna(how='all') if sheet_maestro else pd.DataFrame()
+            df_stock_form = pd.read_excel(xls_movimientos, sheet_name=sheet_stock).dropna(how='all') if sheet_stock else pd.DataFrame()
+            df_ingresos_form = pd.read_excel(xls_movimientos, sheet_name=sheet_ingresos).dropna(how='all') if sheet_ingresos else pd.DataFrame()
 
             # Limpiar nombres de columnas
             df_maestro.columns = df_maestro.columns.astype(str).str.strip()
