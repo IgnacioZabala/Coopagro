@@ -1029,6 +1029,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     try:
         with st.spinner("Descargando base de datos de insumos..."):
             import time
+            import re
             
             # 1. Leer archivo de Movimientos (Stock e Ingresos)
             URL_MOVIMIENTOS = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/export?format=xlsx"
@@ -1052,10 +1053,10 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             df_stock_form.columns = df_stock_form.columns.astype(str).str.strip()
             df_ingresos_form.columns = df_ingresos_form.columns.astype(str).str.strip()
 
-            # Llave de cruce robusta para el Maestro
+            # Llave de cruce ultra-robusta (elimina espacios y símbolos)
             if 'Insumo' in df_maestro.columns:
                 df_maestro['Insumo'] = df_maestro['Insumo'].astype(str).str.strip()
-                df_maestro['Insumo_Key'] = df_maestro['Insumo'].str.lower()
+                df_maestro['Insumo_Key'] = df_maestro['Insumo'].str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
             else:
                 df_maestro['Insumo_Key'] = 'desconocido'
                 st.error("⚠️ La columna 'Insumo' no se encontró en el Maestro.")
@@ -1088,7 +1089,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             # =====================================================================
             if not df_ingresos_form.empty and 'Cantidad recibida' in df_ingresos_form.columns:
                 df_ingresos_form['Insumo'] = df_ingresos_form['Insumo'].astype(str).str.strip()
-                df_ingresos_form['Insumo_Key'] = df_ingresos_form['Insumo'].str.lower()
+                df_ingresos_form['Insumo_Key'] = df_ingresos_form['Insumo'].str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
                 
                 df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
                 df_ingresos_form['Costo total (pesos)'] = pd.to_numeric(df_ingresos_form.get('Costo total (pesos)', 0).astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
@@ -1111,39 +1112,36 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 precios_nuevos = pd.DataFrame(columns=['Insumo_Key', 'Precio Calculado'])
 
             # =====================================================================
-            # STOCK FÍSICO (Híbrido: Formato Ancho o Largo)
+            # STOCK FÍSICO (Unpivot del formato ancho exacto)
             # =====================================================================
             fecha_maxima_stock = pd.NaT
 
             if not df_stock_form.empty:
-                # Determinar si ya es formato largo óptimo
-                es_formato_largo = 'Insumo' in df_stock_form.columns and 'Stock fisico real' in df_stock_form.columns and not df_stock_form['Insumo'].isna().all()
+                # 1. Columnas Base (Marca Temporal y Fecha)
+                cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
+                
+                # 2. Descartamos las columnas vacías (C y D) y agrupamos las reales (E en adelante)
+                cols_ignorar = ['insumo', 'stock fisico real', 'columna 5']
+                cols_insumos = [c for c in df_stock_form.columns if c not in cols_base and c.lower() not in cols_ignorar and not c.lower().startswith('unnamed')]
 
-                if es_formato_largo:
-                    df_stock_long = df_stock_form.copy()
-                else:
-                    # Es formato ancho (ejecuta unpivot/melt)
-                    cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
-                    nombres_viejos = ['insumo', 'stock fisico real', 'columna 5']
-                    cols_viejas = [c for c in df_stock_form.columns if c.lower() in nombres_viejos]
-                    df_stock_limpio = df_stock_form.drop(columns=cols_viejas, errors='ignore')
-                    cols_insumos = [c for c in df_stock_limpio.columns if c not in cols_base]
+                # 3. Transformación Unpivot (Melt)
+                df_stock_long = df_stock_form.melt(
+                    id_vars=cols_base,
+                    value_vars=cols_insumos,
+                    var_name='Insumo_Form',
+                    value_name='Stock fisico real'
+                )
 
-                    df_stock_long = df_stock_limpio.melt(
-                        id_vars=cols_base,
-                        value_vars=cols_insumos,
-                        var_name='Insumo',
-                        value_name='Stock fisico real'
-                    )
-
-                # Limpieza de nulos y conversión
+                # 4. Limpieza numérica
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
                 df_stock_long['Stock fisico real'] = pd.to_numeric(df_stock_long['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce')
                 df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
-                df_stock_long['Insumo_Key'] = df_stock_long['Insumo'].astype(str).str.strip().str.lower()
+                
+                # 5. Generar llave robusta
+                df_stock_long['Insumo_Key'] = df_stock_long['Insumo_Form'].astype(str).str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
 
-                # Filtrar stock priorizando Fecha de recuento
-                col_fecha_stock = next((c for c in df_stock_long.columns if 'fecha' in c.lower()), next((c for c in df_stock_long.columns if 'marca' in c.lower()), None))
+                # 6. Filtro cronológico estricto
+                col_fecha_stock = next((c for c in cols_base if 'fecha' in c.lower()), cols_base[0] if cols_base else None)
                 
                 if col_fecha_stock:
                     df_stock_long['Fecha_Dt'] = pd.to_datetime(df_stock_long[col_fecha_stock], format="mixed", dayfirst=True, errors='coerce')
@@ -1154,7 +1152,7 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                         ultimo_stock = df_stock_mes.sort_values('Fecha_Dt').groupby('Insumo_Key').last().reset_index()
                         fecha_maxima_stock = df_stock_mes['Fecha_Dt'].max()
                     else:
-                        ultimo_stock = df_stock_long.sort_values('Fecha_Dt').groupby('Insumo_Key').last().reset_index()
+                        ultimo_stock = pd.DataFrame(columns=['Insumo_Key', 'Stock Base Físico'])
                 else:
                     ultimo_stock = df_stock_long.groupby('Insumo_Key').last().reset_index()
                 
@@ -1234,7 +1232,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
         with tab_inv2:
-            # Título dinámico basado en la fecha de stock
             if pd.notna(fecha_maxima_stock):
                 titulo_valorizado = f"Stock al {fecha_maxima_stock.day} de {MESES_ES[filtro_mes_costo]} de {filtro_anio_costo}"
             else:
