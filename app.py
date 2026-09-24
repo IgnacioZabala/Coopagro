@@ -1017,7 +1017,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             f"Costo Variable Total / Kilo Producido: $ {costo_por_kilo:,.2f}".replace(",", "."),
             f"   - Desglose / kg: Aditivos: $ {costo_aditivos_kilo:,.2f}".replace(",", ".") + f" | Envasado: $ {costo_envasado_kilo:,.2f}".replace(",", ".") + f" | CIP: $ {costo_cip_kilo:,.2f}".replace(",", ".")
         ]
-        # Columnas detalladas para el PDF de inventario
         headers = [("Insumo", 60), ("Cat.", 20), ("Stock Físico", 25), ("Unidad", 15), ("Precio Unit.", 30), ("Valorización ($)", 50)]
         mapeo = [
             lambda r: str(getattr(r, "Insumo", ""))[:28],
