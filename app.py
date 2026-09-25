@@ -37,7 +37,7 @@ st.markdown(
 # --- IDs de Google Drive y Sheets (Blindados) ---
 FILE_ID_REMITOS = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 FILE_ID_MILKO = "1WR3orOFWXyyMqbVrKh792-8VBh2qN68O"
-FILE_ID_BACSOMATIC = "1SKBiDh4-EyELoYwlvqxB6QXErzYAdqPI"
+FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 FILE_ID_MASTELLONE = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 ID_PRODUCCION = "1EH1koI566Bll9b_bqk9Ya4TenOIfczjt"
 SHEET_INSUMOS_ID = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
@@ -583,7 +583,23 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           if v_ufc and "UFC" in df_per: df_tabla_visual["UFC"] = df_per["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
           if v_scc and "SCC" in df_per: df_tabla_visual["SCC"] = df_per["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
 
-          st.dataframe(df_tabla_visual, use_container_width=True, hide_index=True)
+          # --- LÓGICA DE ESTILOS PARA CELDAS ROJAS EN LA INTERFAZ DE COOPAGRO ---
+          def highlight_bacsomatic(val, threshold):
+              try:
+                  if pd.notna(val) and str(val) != "-":
+                      num_val = float(str(val).replace(".", "").replace(",", "."))
+                      if num_val > threshold: return 'color: red; font-weight: bold'
+              except:
+                  pass
+              return ''
+
+          df_style_coop = df_tabla_visual.style
+          if "UFC" in df_tabla_visual.columns:
+              df_style_coop = df_style_coop.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC"])
+          if "SCC" in df_tabla_visual.columns:
+              df_style_coop = df_style_coop.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC"])
+
+          st.dataframe(df_style_coop, use_container_width=True, hide_index=True)
 
     elif vista_coop == "Envío Masivo Semanal":
       st.header("📤 Envío Masivo Semanal")
@@ -709,7 +725,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
       df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
 
-      # Indexar múltiples recepciones en Mastellone por lab_index
       df_mhsa = df_mhsa.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
       df_mhsa["lab_index"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount()
 
