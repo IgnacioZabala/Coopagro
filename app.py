@@ -274,7 +274,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
     df_contactos = pd.DataFrame()
     if not df_contactos_raw.empty:
-      # Buscar fila de encabezado dinámicamente para la hoja Código Tambos
       header_idx = -1
       for i, row in df_contactos_raw.head(10).iterrows():
           row_str = " ".join([str(x).lower() for x in row if pd.notna(x)])
@@ -315,24 +314,19 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     for col in ["Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]:
       if col not in df.columns: df[col] = pd.NA
 
-    # ---> REEMPLAZAR #REF! O NOMBRES ROTOS CON EL MAESTRO DE TAMBOS <---
     if not df_contactos.empty and "Tambo_Maestro" in df_contactos.columns:
         mapeo_nombres = dict(zip(df_contactos["Num_Tambo"], df_contactos["Tambo_Maestro"]))
-        # Mapea el nombre desde el maestro, si no lo encuentra deja el original (o el #REF!)
         df["Tambo"] = df["Num_Tambo"].map(mapeo_nombres).combine_first(df["Tambo"])
         
-    # Limpieza final por si queda algún #REF! suelto sin mapear en el maestro
     df["Tambo"] = df["Tambo"].replace("#REF!", "Desconocido")
 
-    # Procesamiento Lab (Muestra 1 asegurada)
+    # Procesamiento Milko (Extracción robusta y Tolerancia 3 días)
     if not df_lab_raw.empty:
       df_lab = df_lab_raw.copy()
       col_sample = next((c for c in df_lab.columns if any(x in c.lower() for x in ["sample", "number", "tambo", "muestra"])), df_lab.columns[0])
-      df_lab["Num_Tambo"] = df_lab[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
+      df_lab["Num_Tambo"] = df_lab[col_sample].astype(str).apply(extraer_id_tambo)
       
-      # ---> CORRECCIÓN MILKO COOPAGRO <---
       df_lab["Fecha_Extraida"] = pd.to_datetime(df_lab[col_sample].astype(str).apply(extraer_fecha_texto), errors="coerce")
-      
       col_date = next((c for c in df_lab.columns if any(x in c.lower() for x in ["fecha", "date", "time", "analyzed"])), None)
       df_lab["Fecha"] = df_lab["Fecha_Extraida"].fillna(pd.to_datetime(df_lab[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
       df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
@@ -351,20 +345,28 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if map_cols:
         df_milko_clean = df_lab[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
         for c in map_cols.values(): df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
+        
         df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
+        for offset in [1, 2, 3]:
+            df_fall = df[["Num_Tambo", "Fecha"]].copy()
+            df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
+            df_lab_offset = df_milko_clean.rename(columns={"Fecha": "Fecha_Buscada"})
+            df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+            for c in map_cols.values():
+                if c in df.columns and c in df_fall.columns:
+                    df[c] = df[c].combine_first(df_fall[c])
+                    
         if "Grasa_Lab" in df: df["Grasa"] = df["Grasa_Lab"].combine_first(df["Grasa"])
         if "Proteina_Lab" in df: df["Proteina"] = df["Proteina_Lab"].combine_first(df["Proteina"])
         if "Crioscopia_Lab" in df: df["Crioscopia"] = df["Crioscopia_Lab"].combine_first(df["Crioscopia"])
 
-    # Procesamiento Bacsomatic (Muestra 1 asegurada)
+    # Procesamiento Bacsomatic (Extracción robusta y Tolerancia 3 días)
     if not df_bac_raw.empty:
       df_bac = df_bac_raw.copy()
       col_id = next((c for c in df_bac.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac.columns[0])
-      df_bac["Num_Tambo"] = df_bac[col_id].astype(str).str.split().str[0].apply(limpiar_tambo)
+      df_bac["Num_Tambo"] = df_bac[col_id].astype(str).apply(extraer_id_tambo)
       
-      # ---> CORRECCIÓN BACSOMATIC COOPAGRO <---
       df_bac["Fecha_Extraida"] = pd.to_datetime(df_bac[col_id].astype(str).apply(extraer_fecha_texto), errors="coerce")
-      
       col_date_bac = next((c for c in df_bac.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
       df_bac["Fecha"] = df_bac["Fecha_Extraida"].fillna(pd.to_datetime(df_bac[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
       df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
@@ -381,7 +383,17 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if map_cols_bac:
         df_bac_clean = df_bac[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
         for c in map_cols_bac.values(): df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
+        
         df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
+        for offset in [1, 2, 3]:
+            df_fall = df[["Num_Tambo", "Fecha"]].copy()
+            df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
+            df_lab_offset = df_bac_clean.rename(columns={"Fecha": "Fecha_Buscada"})
+            df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+            for c in map_cols_bac.values():
+                if c in df.columns and c in df_fall.columns:
+                    df[c] = df[c].combine_first(df_fall[c])
+                    
         if "UFC_Val" in df: df["UFC"] = df["UFC_Val"].combine_first(df["UFC"])
         if "SCC_Val" in df: df["SCC"] = df["SCC_Val"].combine_first(df["SCC"])
 
@@ -651,9 +663,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_lab_m = df_lab_raw.copy()
           col_sample = df_lab_m.columns[0]
           
-          df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-          
-          # ---> CORRECCIÓN MILKO MASTELLONE <---
+          df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).apply(extraer_id_tambo)
           df_lab_m["Fecha_Extraida"] = pd.to_datetime(df_lab_m[col_sample].astype(str).apply(extraer_fecha_texto), errors="coerce")
           
           col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
@@ -675,21 +685,26 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               df_milko_clean = df_lab_m[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
               for c in map_cols.values(): 
                   df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
+              
               df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
+              for offset in [1, 2, 3]:
+                  df_fall = df_mhsa[["Num_Tambo", "Fecha"]].copy()
+                  df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
+                  df_lab_offset = df_milko_clean.rename(columns={"Fecha": "Fecha_Buscada"})
+                  df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+                  for c in map_cols.values():
+                      if c in df_mhsa.columns and c in df_fall.columns:
+                          df_mhsa[c] = df_mhsa[c].combine_first(df_fall[c])
+
               if "Grasa_Lab" in df_mhsa: df_mhsa["Grasa"] = df_mhsa["Grasa_Lab"]
               if "Proteina_Lab" in df_mhsa: df_mhsa["Proteina"] = df_mhsa["Proteina_Lab"]
               if "Crioscopia_Lab" in df_mhsa: df_mhsa["Crioscopia"] = df_mhsa["Crioscopia_Lab"]
 
-      # --- LECTURA BACSOMATIC (POR NOMBRE Y FALLBACK) ---
       if not df_bac_raw.empty:
           df_bac_m = df_bac_raw.copy()
-          
-          # Buscamos la columna de identificación por nombre
           col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
           
-          df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-          
-          # ---> CORRECCIÓN BACSOMATIC MASTELLONE <---
+          df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).apply(extraer_id_tambo)
           df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).apply(extraer_fecha_texto), errors="coerce")
           
           col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
@@ -699,7 +714,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
           df_bac_m = df_bac_m.sort_values(by=["_id_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
           
-          # Identificar columnas UFC y SCC dinámicamente por nombre (ignora si se corren de la Q y R)
           map_cols_bac = {}
           col_ufc = next((c for c in df_bac_m.columns if "ufc" in c.lower()), None)
           col_scc = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["scc", "celulas", "somáticas"])), None)
@@ -711,19 +725,15 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               for c in map_cols_bac.values(): 
                   df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
               
-              # CRUCE ORIGINAL (Mismo Día)
               df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
-              
-              # CRUCE FALLBACK (+1 Día)
-              df_fallback_bac = df_mhsa[["Num_Tambo", "Fecha"]].copy()
-              df_fallback_bac["Fecha_Buscada"] = df_fallback_bac["Fecha"] + pd.Timedelta(days=1)
-              df_bac_fallback = df_bac_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-              df_fallback_bac = pd.merge(df_fallback_bac, df_bac_fallback, on=["Num_Tambo", "Fecha_Buscada"], how="left")
-              
-              # Fusionar resultados
-              for c in map_cols_bac.values():
-                  if c in df_mhsa.columns and c in df_fallback_bac.columns:
-                      df_mhsa[c] = df_mhsa[c].combine_first(df_fallback_bac[c])
+              for offset in [1, 2, 3]:
+                  df_fall = df_mhsa[["Num_Tambo", "Fecha"]].copy()
+                  df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
+                  df_lab_offset = df_bac_clean.rename(columns={"Fecha": "Fecha_Buscada"})
+                  df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+                  for c in map_cols_bac.values():
+                      if c in df_mhsa.columns and c in df_fall.columns:
+                          df_mhsa[c] = df_mhsa[c].combine_first(df_fall[c])
                       
               if "UFC_Val" in df_mhsa.columns: df_mhsa["UFC"] = df_mhsa["UFC_Val"]
               if "SCC_Val" in df_mhsa.columns: df_mhsa["SCC"] = df_mhsa["SCC_Val"]
@@ -781,7 +791,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "Proteina" in df_m_disp: df_m_disp["Proteína"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Crioscopia" in df_m_disp: df_m_disp["Crioscopía"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
             
-            # Formato de valores Bacsomatic como strings
             if "UFC" in df_m_disp: df_m_disp["UFC"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC" in df_m_disp: df_m_disp["SCC"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
@@ -791,24 +800,19 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]:
                 if col_extra in df_m_disp: cols.append(col_extra)
             
-            # --- LÓGICA DE ESTILOS PARA COLORES ROJOS (UFC > 200, SCC > 400) ---
             def highlight_bacsomatic(val, threshold):
                 try:
                     if pd.notna(val) and str(val) != "-":
                         num_val = float(str(val).replace(".", "").replace(",", "."))
-                        if num_val > threshold:
-                            return 'color: red; font-weight: bold'
+                        if num_val > threshold: return 'color: red; font-weight: bold'
                 except:
                     pass
                 return ''
                 
             df_style = df_m_disp[cols].style
-            if "UFC" in cols:
-                df_style = df_style.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC"])
-            if "SCC" in cols:
-                df_style = df_style.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC"])
+            if "UFC" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC"])
+            if "SCC" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC"])
             
-            # Mostramos la tabla con estilos en la interfaz
             st.dataframe(df_style, use_container_width=True, hide_index=True)
 
             st.markdown("---")
