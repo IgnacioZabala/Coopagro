@@ -37,7 +37,7 @@ st.markdown(
 # --- IDs de Google Drive y Sheets (Blindados) ---
 FILE_ID_REMITOS = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 FILE_ID_MILKO = "1WR3orOFWXyyMqbVrKh792-8VBh2qN68O"
-FILE_ID_BACSOMATIC = "1SKBiDh4-EyELoYwlvqxB6QXErzYAdqPI"
+FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 FILE_ID_MASTELLONE = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 ID_PRODUCCION = "1EH1koI566Bll9b_bqk9Ya4TenOIfczjt"
 SHEET_INSUMOS_ID = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
@@ -196,7 +196,7 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
     for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
       val = fn_mapeo(row)
       col_name = headers_ajustados[i][0]
-      align = "L" if "Nombre" in col_name or "Producto" in col_name or "Insumo" in col_name else "C"
+      align = "L" if "Nombre" in col_name or "Producto" in col_name or "Insumo" in col_name or "Tambo" in col_name else "C"
       
       is_red = False
       if "UFC" in col_name or "SCC" in col_name:
@@ -649,7 +649,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
               val = fn_mapeo(row)
               col_name = headers_ajustados[i][0]
-              align = "L" if "Nombre" in col_name or "Producto" in col_name else "C"
+              align = "L" if "Nombre" in col_name or "Producto" in col_name or "Tambo" in col_name else "C"
               
               is_red = False
               if "UFC" in col_name or "SCC" in col_name:
@@ -907,7 +907,22 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             
             mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
             subt_rec = f"Período: {mes_str} {filtro_anio}"
-            metricas_rec = [f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L"]
+            
+            tambos_activos_m = df_mhsa_f["Num_Tambo"].nunique()
+            temp_prom_m = df_mhsa_f["Temperatura"].mean() if "Temperatura" in df_mhsa_f else float("nan")
+            grasa_p_m = calcular_promedio_ponderado(df_mhsa_f, "Grasa")
+            prot_p_m = calcular_promedio_ponderado(df_mhsa_f, "Proteina")
+            ratio_gp_m = grasa_p_m / prot_p_m if (prot_p_m and prot_p_m > 0) else pd.NA
+
+            grasa_str_m = f"{grasa_p_m:.2f}%".replace(".", ",") if pd.notna(grasa_p_m) else "S/D"
+            prot_str_m = f"{prot_p_m:.2f}%".replace(".", ",") if pd.notna(prot_p_m) else "S/D"
+            ratio_str_m = f"{ratio_gp_m:.2f}".replace(".", ",") if pd.notna(ratio_gp_m) else "S/D"
+
+            metricas_rec = [
+                f"Tambos Activos: {tambos_activos_m} | Litros Totales: {formato_miles(total_litros_ingresados)} L",
+                f"Temp. Promedio: {formato_temp(temp_prom_m)} | Grasa Ponderada: {grasa_str_m} | Prot. Ponderada: {prot_str_m}",
+                f"Ratio Grasa / Proteína: {ratio_str_m}"
+            ]
             
             pdf_rec_bytes = generar_pdf_mastellone_sin_logo("Reporte de Recepción y Calidad MHSA", subt_rec, metricas_rec, headers_pdf_rec, df_pdf_rec, mapeo_pdf_rec)
             st.download_button("📥 Descargar Reporte Recepción PDF", data=pdf_rec_bytes, file_name="Reporte_Recepcion_MHSA.pdf", mime="application/pdf")
