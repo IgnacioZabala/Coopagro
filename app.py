@@ -329,7 +329,10 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_lab = df_lab_raw.copy()
       col_sample = next((c for c in df_lab.columns if any(x in c.lower() for x in ["sample", "number", "tambo", "muestra"])), df_lab.columns[0])
       df_lab["Num_Tambo"] = df_lab[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-      df_lab["Fecha_Extraida"] = pd.to_datetime(df_lab[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
+      
+      # ---> CORRECCIÓN MILKO COOPAGRO <---
+      df_lab["Fecha_Extraida"] = pd.to_datetime(df_lab[col_sample].astype(str).apply(extraer_fecha_texto), errors="coerce")
+      
       col_date = next((c for c in df_lab.columns if any(x in c.lower() for x in ["fecha", "date", "time", "analyzed"])), None)
       df_lab["Fecha"] = df_lab["Fecha_Extraida"].fillna(pd.to_datetime(df_lab[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
       df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
@@ -358,7 +361,10 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_bac = df_bac_raw.copy()
       col_id = next((c for c in df_bac.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac.columns[0])
       df_bac["Num_Tambo"] = df_bac[col_id].astype(str).str.split().str[0].apply(limpiar_tambo)
-      df_bac["Fecha_Extraida"] = pd.to_datetime(df_bac[col_id].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
+      
+      # ---> CORRECCIÓN BACSOMATIC COOPAGRO <---
+      df_bac["Fecha_Extraida"] = pd.to_datetime(df_bac[col_id].astype(str).apply(extraer_fecha_texto), errors="coerce")
+      
       col_date_bac = next((c for c in df_bac.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
       df_bac["Fecha"] = df_bac["Fecha_Extraida"].fillna(pd.to_datetime(df_bac[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
       df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
@@ -646,7 +652,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           col_sample = df_lab_m.columns[0]
           
           df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-          df_lab_m["Fecha_Extraida"] = pd.to_datetime(df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
+          
+          # ---> CORRECCIÓN MILKO MASTELLONE <---
+          df_lab_m["Fecha_Extraida"] = pd.to_datetime(df_lab_m[col_sample].astype(str).apply(extraer_fecha_texto), errors="coerce")
+          
           col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
           df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(pd.to_datetime(df_lab_m[col_date], dayfirst=True, errors="coerce").dt.normalize() if col_date else pd.NaT)
           df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
@@ -679,7 +688,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
           
           df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-          df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
+          
+          # ---> CORRECCIÓN BACSOMATIC MASTELLONE <---
+          df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).apply(extraer_fecha_texto), errors="coerce")
           
           col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
           df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], dayfirst=True, errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
