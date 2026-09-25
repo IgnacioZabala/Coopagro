@@ -111,6 +111,13 @@ def limpiar_tambo(val) -> str:
   if s and s[0].isdigit(): return f"T{s}"
   return s
 
+def extraer_id_tambo(texto) -> str:
+  if pd.isna(texto): return ""
+  s = str(texto).upper()
+  match = re.match(r'^[^\d]*(\d+)', s)
+  if match: return f"T{match.group(1)}"
+  return s.strip()
+
 def extraer_fecha_texto(texto) -> pd.Timestamp:
   if pd.isna(texto): return pd.NaT
   s = str(texto).strip()
@@ -185,12 +192,31 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   for i, (col_name, col_w) in enumerate(headers_ajustados):
     pdf.cell(col_w, 8, col_name, 1, 1 if i == len(headers_ajustados) - 1 else 0, "C", fill=True)
 
-  pdf.set_font("Arial", "", 8)
   for row in df_datos.itertuples(index=False):
     for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
       val = fn_mapeo(row)
-      align = "L" if "Nombre" in headers_ajustados[i][0] or "Producto" in headers_ajustados[i][0] or "Insumo" in headers_ajustados[i][0] else "C"
+      col_name = headers_ajustados[i][0]
+      align = "L" if "Nombre" in col_name or "Producto" in col_name or "Insumo" in col_name else "C"
+      
+      is_red = False
+      if "UFC" in col_name or "SCC" in col_name:
+          try:
+              num_val = float(str(val).replace(".", "").replace(",", "."))
+              if "UFC" in col_name and num_val > 200: is_red = True
+              if "SCC" in col_name and num_val > 400: is_red = True
+          except ValueError:
+              pass
+      
+      if is_red:
+          pdf.set_text_color(255, 0, 0)
+          pdf.set_font("Arial", "B", 8)
+      else:
+          pdf.set_text_color(0, 0, 0)
+          pdf.set_font("Arial", "", 8)
+
       pdf.cell(col_w, 7, str(val), 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
+  
+  pdf.set_text_color(0, 0, 0)
 
   output = pdf.output(dest="S")
   if isinstance(output, bytearray): return bytes(output)
@@ -320,7 +346,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         
     df["Tambo"] = df["Tambo"].replace("#REF!", "Desconocido")
 
-    # Procesamiento Milko (Extracción robusta y Tolerancia 3 días)
     if not df_lab_raw.empty:
       df_lab = df_lab_raw.copy()
       col_sample = next((c for c in df_lab.columns if any(x in c.lower() for x in ["sample", "number", "tambo", "muestra"])), df_lab.columns[0])
@@ -360,7 +385,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         if "Proteina_Lab" in df: df["Proteina"] = df["Proteina_Lab"].combine_first(df["Proteina"])
         if "Crioscopia_Lab" in df: df["Crioscopia"] = df["Crioscopia_Lab"].combine_first(df["Crioscopia"])
 
-    # Procesamiento Bacsomatic (Extracción robusta y Tolerancia 3 días)
     if not df_bac_raw.empty:
       df_bac = df_bac_raw.copy()
       col_id = next((c for c in df_bac.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac.columns[0])
@@ -596,12 +620,31 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       for i, (col_name, col_w) in enumerate(headers_ajustados):
           pdf.cell(col_w, 8, col_name, 1, 1 if i == len(headers_ajustados) - 1 else 0, "C", fill=True)
 
-      pdf.set_font("Arial", "", 8)
       for row in df_datos.itertuples(index=False):
           for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
               val = fn_mapeo(row)
-              align = "L" if "Nombre" in headers_ajustados[i][0] or "Producto" in headers_ajustados[i][0] else "C"
+              col_name = headers_ajustados[i][0]
+              align = "L" if "Nombre" in col_name or "Producto" in col_name else "C"
+              
+              is_red = False
+              if "UFC" in col_name or "SCC" in col_name:
+                  try:
+                      num_val = float(str(val).replace(".", "").replace(",", "."))
+                      if "UFC" in col_name and num_val > 200: is_red = True
+                      if "SCC" in col_name and num_val > 400: is_red = True
+                  except ValueError:
+                      pass
+              
+              if is_red:
+                  pdf.set_text_color(255, 0, 0)
+                  pdf.set_font("Arial", "B", 8)
+              else:
+                  pdf.set_text_color(0, 0, 0)
+                  pdf.set_font("Arial", "", 8)
+
               pdf.cell(col_w, 7, str(val), 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
+
+      pdf.set_text_color(0, 0, 0)
 
       output = pdf.output(dest="S")
       if isinstance(output, bytearray): return bytes(output)
@@ -818,14 +861,16 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             st.markdown("---")
             df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia"})
             
-            headers_pdf_rec = [("Fecha", 25), ("Tambo", 70), ("Litros", 25), ("Temp", 20), ("Grasa", 25), ("Proteina", 25)]
+            headers_pdf_rec = [("Fecha", 22), ("Tambo", 50), ("Litros", 20), ("Temp", 15), ("Grasa", 17), ("Proteina", 17), ("UFC", 20), ("SCC", 20)]
             mapeo_pdf_rec = [
                 lambda r: r.Fecha if pd.notna(r.Fecha) else "",
-                lambda r: str(r.Tambo)[:25],
+                lambda r: str(r.Tambo)[:22],
                 lambda r: str(r.Litros),
                 lambda r: str(getattr(r, "Temperatura", "-")),
                 lambda r: str(getattr(r, "Grasa", "-")),
-                lambda r: str(getattr(r, "Proteina", "-"))
+                lambda r: str(getattr(r, "Proteina", "-")),
+                lambda r: str(getattr(r, "UFC", "-")),
+                lambda r: str(getattr(r, "SCC", "-"))
             ]
             
             mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
