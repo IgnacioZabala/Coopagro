@@ -37,7 +37,7 @@ st.markdown(
 # --- IDs de Google Drive y Sheets (Blindados) ---
 FILE_ID_REMITOS = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 FILE_ID_MILKO = "1WR3orOFWXyyMqbVrKh792-8VBh2qN68O"
-FILE_ID_BACSOMATIC = "1SKBiDh4-EyELoYwlvqxB6QXErzYAdqPI"
+FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 FILE_ID_MASTELLONE = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 ID_PRODUCCION = "1EH1koI566Bll9b_bqk9Ya4TenOIfczjt"
 SHEET_INSUMOS_ID = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
@@ -156,6 +156,14 @@ def clasificar_lote_general(lote_str):
 # =========================================================================
 # FUNCIONES DE PDF BLINDADAS (Logo y Espaciado Dinámico)
 # =========================================================================
+def parse_valor_celda(val):
+  if pd.isna(val) or val == "-": return 0.0
+  s = str(val).replace("%", "").strip()
+  try:
+    return float(s.replace(",", "."))
+  except ValueError:
+    return 0.0
+
 def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list, df_datos: pd.DataFrame, filas_mapeo: list, usable_width: int = 190):
   pdf = FPDF(orientation="P", unit="mm", format="A4")
   pdf.set_auto_page_break(auto=True, margin=15)
@@ -200,12 +208,9 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
       
       is_red = False
       if "UFC" in col_name or "SCC" in col_name:
-          try:
-              num_val = float(str(val).replace(".", "").replace(",", "."))
-              if "UFC" in col_name and num_val > 200: is_red = True
-              if "SCC" in col_name and num_val > 400: is_red = True
-          except ValueError:
-              pass
+          num_val = parse_valor_celda(val)
+          if "UFC" in col_name and num_val > 200: is_red = True
+          if "SCC" in col_name and num_val > 400: is_red = True
       
       if is_red:
           pdf.set_text_color(255, 0, 0)
@@ -653,12 +658,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               
               is_red = False
               if "UFC" in col_name or "SCC" in col_name:
-                  try:
-                      num_val = float(str(val).replace(".", "").replace(",", "."))
-                      if "UFC" in col_name and num_val > 200: is_red = True
-                      if "SCC" in col_name and num_val > 400: is_red = True
-                  except ValueError:
-                      pass
+                  num_val = parse_valor_celda(val)
+                  if "UFC" in col_name and num_val > 200: is_red = True
+                  if "SCC" in col_name and num_val > 400: is_red = True
               
               if is_red:
                   pdf.set_text_color(255, 0, 0)
