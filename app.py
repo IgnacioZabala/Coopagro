@@ -37,7 +37,7 @@ st.markdown(
 # --- IDs de Google Drive y Sheets (Blindados) ---
 FILE_ID_REMITOS = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 FILE_ID_MILKO = "1WR3orOFWXyyMqbVrKh792-8VBh2qN68O"
-FILE_ID_BACSOMATIC = "1SKBiDh4-EyELoYwlvqxB6QXErzYAdqPI"
+FILE_ID_BACSOMATIC = "1KeTle24zxjK-clKAuXsAOUzGkfBNXgI8"
 FILE_ID_MASTELLONE = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 ID_PRODUCCION = "1EH1koI566Bll9b_bqk9Ya4TenOIfczjt"
 SHEET_INSUMOS_ID = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
@@ -235,8 +235,8 @@ def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_
   if args_visibles["grasa"] and "Grasa" in df_productor and pd.notna(df_productor["Grasa"].mean()): partes_solidos.append(f"Grasa: {df_productor['Grasa'].mean():.2f}%".replace(".", ","))
   if args_visibles["prot"] and "Proteina" in df_productor and pd.notna(df_productor["Proteina"].mean()): partes_solidos.append(f"Proteína: {df_productor['Proteina'].mean():.2f}%".replace(".", ","))
   if args_visibles["crios"] and "Crioscopia" in df_productor and pd.notna(df_productor["Crioscopia"].mean()): partes_solidos.append(f"Crioscopia: {df_productor['Crioscopia'].mean():.3f}".replace(".", ","))
-  if args_visibles["ufc"] and "UFC" in df_productor and pd.notna(df_productor["UFC"].mean()): partes_solidos.append(f"UFC: {formato_miles(df_productor['UFC'].mean())}")
-  if args_visibles["scc"] and "SCC" in df_productor and pd.notna(df_productor["SCC"].mean()): partes_solidos.append(f"SCC: {formato_miles(df_productor['SCC'].mean())}")
+  if args_visibles["ufc"] and "UFC" in df_productor and pd.notna(df_productor["UFC"].mean()): partes_solidos.append(f"UFC <200: {formato_miles(df_productor['UFC'].mean())}")
+  if args_visibles["scc"] and "SCC" in df_productor and pd.notna(df_productor["SCC"].mean()): partes_solidos.append(f"SCC <400: {formato_miles(df_productor['SCC'].mean())}")
   if partes_solidos: metricas.append(f"Promedios Lab -> {' | '.join(partes_solidos)}")
 
   headers = [("Fecha", 26), ("N° Remito", 34), ("Litros", 30)]
@@ -249,8 +249,8 @@ def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_
   if args_visibles["grasa"]: headers.append(("Grasa", 20)); mapeo.append(lambda r: f"{getattr(r, 'Grasa'):.2f}%".replace(".", ",") if pd.notna(getattr(r, 'Grasa', pd.NA)) else "-")
   if args_visibles["prot"]: headers.append(("Prot", 20)); mapeo.append(lambda r: f"{getattr(r, 'Proteina'):.2f}%".replace(".", ",") if pd.notna(getattr(r, 'Proteina', pd.NA)) else "-")
   if args_visibles["crios"]: headers.append(("Crios", 22)); mapeo.append(lambda r: f"{getattr(r, 'Crioscopia'):.3f}".replace(".", ",") if pd.notna(getattr(r, 'Crioscopia', pd.NA)) else "-")
-  if args_visibles["ufc"]: headers.append(("UFC", 22)); mapeo.append(lambda r: formato_miles(getattr(r, 'UFC', pd.NA)) if pd.notna(getattr(r, 'UFC', pd.NA)) else "-")
-  if args_visibles["scc"]: headers.append(("SCC", 24)); mapeo.append(lambda r: formato_miles(getattr(r, 'SCC', pd.NA)) if pd.notna(getattr(r, 'SCC', pd.NA)) else "-")
+  if args_visibles["ufc"]: headers.append(("UFC <200", 24)); mapeo.append(lambda r: formato_miles(getattr(r, 'UFC', pd.NA)) if pd.notna(getattr(r, 'UFC', pd.NA)) else "-")
+  if args_visibles["scc"]: headers.append(("SCC <400", 25)); mapeo.append(lambda r: formato_miles(getattr(r, 'SCC', pd.NA)) if pd.notna(getattr(r, 'SCC', pd.NA)) else "-")
 
   return generar_pdf_base(titulo, subtitulo, metricas, headers, df_productor, mapeo)
 
@@ -549,8 +549,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         v_grasa = st.sidebar.checkbox("Grasa", True)
         v_prot = st.sidebar.checkbox("Proteína", True)
         v_crios = st.sidebar.checkbox("Crioscopia", True)
-        v_ufc = st.sidebar.checkbox("UFC", True)
-        v_scc = st.sidebar.checkbox("SCC", True)
+        v_ufc = st.sidebar.checkbox("UFC <200", True)
+        v_scc = st.sidebar.checkbox("SCC <400", True)
         args_vis = {"temp": v_temp, "grasa": v_grasa, "prot": v_prot, "crios": v_crios, "ufc": v_ufc, "scc": v_scc}
 
         if not df_per.empty:
@@ -580,8 +580,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           if v_grasa and "Grasa" in df_per: df_tabla_visual["Grasa"] = df_per["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
           if v_prot and "Proteina" in df_per: df_tabla_visual["Proteína"] = df_per["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
           if v_crios and "Crioscopia" in df_per: df_tabla_visual["Crioscopia"] = df_per["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
-          if v_ufc and "UFC" in df_per: df_tabla_visual["UFC"] = df_per["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
-          if v_scc and "SCC" in df_per: df_tabla_visual["SCC"] = df_per["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+          if v_ufc and "UFC" in df_per: df_tabla_visual["UFC <200"] = df_per["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+          if v_scc and "SCC" in df_per: df_tabla_visual["SCC <400"] = df_per["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
 
           # --- LÓGICA DE ESTILOS PARA CELDAS ROJAS EN LA INTERFAZ DE COOPAGRO ---
           def highlight_bacsomatic(val, threshold):
@@ -594,10 +594,10 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
               return ''
 
           df_style_coop = df_tabla_visual.style
-          if "UFC" in df_tabla_visual.columns:
-              df_style_coop = df_style_coop.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC"])
-          if "SCC" in df_tabla_visual.columns:
-              df_style_coop = df_style_coop.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC"])
+          if "UFC <200" in df_tabla_visual.columns:
+              df_style_coop = df_style_coop.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC <200"])
+          if "SCC <400" in df_tabla_visual.columns:
+              df_style_coop = df_style_coop.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC <400"])
 
           st.dataframe(df_style_coop, use_container_width=True, hide_index=True)
 
@@ -866,13 +866,13 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "Proteina" in df_m_disp: df_m_disp["Proteína"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Crioscopia" in df_m_disp: df_m_disp["Crioscopía"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
             
-            if "UFC" in df_m_disp: df_m_disp["UFC"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
-            if "SCC" in df_m_disp: df_m_disp["SCC"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            if "UFC" in df_m_disp: df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            if "SCC" in df_m_disp: df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
             df_m_disp = df_m_disp.rename(columns={"Num_Tambo": "Num Tambo"})
             
             cols = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura"]
-            for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC", "SCC"]:
+            for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC <200", "SCC <400"]:
                 if col_extra in df_m_disp: cols.append(col_extra)
             
             def highlight_bacsomatic(val, threshold):
@@ -885,15 +885,15 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 return ''
                 
             df_style = df_m_disp[cols].style
-            if "UFC" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC"])
-            if "SCC" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC"])
+            if "UFC <200" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC <200"])
+            if "SCC <400" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC <400"])
             
             st.dataframe(df_style, use_container_width=True, hide_index=True)
 
             st.markdown("---")
-            df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia"})
+            df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia", "UFC <200": "UFC", "SCC <400": "SCC"})
             
-            headers_pdf_rec = [("Fecha", 22), ("Tambo", 50), ("Litros", 20), ("Temp", 15), ("Grasa", 17), ("Proteina", 17), ("UFC", 20), ("SCC", 20)]
+            headers_pdf_rec = [("Fecha", 22), ("Tambo", 45), ("Litros", 18), ("Temp", 14), ("Grasa", 16), ("Proteina", 16), ("UFC <200", 25), ("SCC <400", 25)]
             mapeo_pdf_rec = [
                 lambda r: r.Fecha if pd.notna(r.Fecha) else "",
                 lambda r: str(r.Tambo)[:22],
