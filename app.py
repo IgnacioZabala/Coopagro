@@ -346,6 +346,11 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         
     df["Tambo"] = df["Tambo"].replace("#REF!", "Desconocido")
 
+    # Ordenar remitos e indexar múltiples recepciones por día (lab_index)
+    df = df.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
+    df["lab_index"] = df.groupby(["Num_Tambo", "Fecha"]).cumcount()
+
+    # Procesamiento Milko (Secuencial por lab_index)
     if not df_lab_raw.empty:
       df_lab = df_lab_raw.copy()
       col_sample = next((c for c in df_lab.columns if any(x in c.lower() for x in ["sample", "number", "tambo", "muestra"])), df_lab.columns[0])
@@ -357,7 +362,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
       
       df_lab["_sample_str"] = df_lab[col_sample].astype(str)
-      df_lab = df_lab.sort_values(by=["_sample_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      df_lab = df_lab.sort_values(by=["_sample_str"])
+      df_lab["lab_index"] = df_lab.groupby(["Num_Tambo", "Fecha"]).cumcount()
       
       map_cols = {}
       col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
@@ -368,15 +374,15 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
       
       if map_cols:
-        df_milko_clean = df_lab[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
+        df_milko_clean = df_lab[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols.keys())].rename(columns=map_cols)
         for c in map_cols.values(): df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
-        df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
+        df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
         for offset in [1, 2, 3]:
-            df_fall = df[["Num_Tambo", "Fecha"]].copy()
+            df_fall = df[["Num_Tambo", "Fecha", "lab_index"]].copy()
             df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
             df_lab_offset = df_milko_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-            df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+            df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada", "lab_index"], how="left")
             for c in map_cols.values():
                 if c in df.columns and c in df_fall.columns:
                     df[c] = df[c].combine_first(df_fall[c])
@@ -385,6 +391,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         if "Proteina_Lab" in df: df["Proteina"] = df["Proteina_Lab"].combine_first(df["Proteina"])
         if "Crioscopia_Lab" in df: df["Crioscopia"] = df["Crioscopia_Lab"].combine_first(df["Crioscopia"])
 
+    # Procesamiento Bacsomatic (Secuencial por lab_index)
     if not df_bac_raw.empty:
       df_bac = df_bac_raw.copy()
       col_id = next((c for c in df_bac.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac.columns[0])
@@ -396,7 +403,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
       
       df_bac["_id_str"] = df_bac[col_id].astype(str)
-      df_bac = df_bac.sort_values(by=["_id_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      df_bac = df_bac.sort_values(by=["_id_str"])
+      df_bac["lab_index"] = df_bac.groupby(["Num_Tambo", "Fecha"]).cumcount()
       
       map_cols_bac = {}
       col_ufc = next((c for c in df_bac.columns if "ufc" in c.lower()), None)
@@ -405,15 +413,15 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if col_scc: map_cols_bac[col_scc] = "SCC_Val"
       
       if map_cols_bac:
-        df_bac_clean = df_bac[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
+        df_bac_clean = df_bac[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
         for c in map_cols_bac.values(): df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
-        df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
+        df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
         for offset in [1, 2, 3]:
-            df_fall = df[["Num_Tambo", "Fecha"]].copy()
+            df_fall = df[["Num_Tambo", "Fecha", "lab_index"]].copy()
             df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
             df_lab_offset = df_bac_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-            df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+            df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada", "lab_index"], how="left")
             for c in map_cols_bac.values():
                 if c in df.columns and c in df_fall.columns:
                     df[c] = df[c].combine_first(df_fall[c])
@@ -421,6 +429,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         if "UFC_Val" in df: df["UFC"] = df["UFC_Val"].combine_first(df["UFC"])
         if "SCC_Val" in df: df["SCC"] = df["SCC_Val"].combine_first(df["SCC"])
 
+    df = df.drop(columns=["lab_index"], errors="ignore")
     df["Fecha_Cierre_Viernes"] = df["Fecha"] + pd.to_timedelta((4 - df["Fecha"].dt.weekday) % 7, unit="D")
     df["Fecha_Inicio_Sabado"] = df["Fecha_Cierre_Viernes"] - pd.Timedelta(days=6)
     df["Ciclo_Semana"] = "Viernes " + df["Fecha_Cierre_Viernes"].dt.strftime("%d/%m/%Y") + " (Sáb " + df["Fecha_Inicio_Sabado"].dt.strftime("%d/%m/%Y") + " al Vie " + df["Fecha_Cierre_Viernes"].dt.strftime("%d/%m/%Y") + ")"
@@ -700,6 +709,10 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
       df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
 
+      # Indexar múltiples recepciones en Mastellone por lab_index
+      df_mhsa = df_mhsa.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
+      df_mhsa["lab_index"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount()
+
       _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_MILKO, URL_BACSOMATIC)
       
       if not df_lab_raw.empty:
@@ -714,7 +727,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_lab_m["_sample_str"] = df_lab_m[col_sample].astype(str)
-          df_lab_m = df_lab_m.sort_values(by=["_sample_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+          df_lab_m = df_lab_m.sort_values(by=["_sample_str"])
+          df_lab_m["lab_index"] = df_lab_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
           
           map_cols = {}
           col_fat = next((c for c in df_lab_m.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
@@ -725,16 +739,16 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
           
           if map_cols:
-              df_milko_clean = df_lab_m[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
+              df_milko_clean = df_lab_m[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols.keys())].rename(columns=map_cols)
               for c in map_cols.values(): 
                   df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
               
-              df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
+              df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
               for offset in [1, 2, 3]:
-                  df_fall = df_mhsa[["Num_Tambo", "Fecha"]].copy()
+                  df_fall = df_mhsa[["Num_Tambo", "Fecha", "lab_index"]].copy()
                   df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
                   df_lab_offset = df_milko_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-                  df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+                  df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada", "lab_index"], how="left")
                   for c in map_cols.values():
                       if c in df_mhsa.columns and c in df_fall.columns:
                           df_mhsa[c] = df_mhsa[c].combine_first(df_fall[c])
@@ -755,7 +769,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
-          df_bac_m = df_bac_m.sort_values(by=["_id_str"]).drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+          df_bac_m = df_bac_m.sort_values(by=["_id_str"])
+          df_bac_m["lab_index"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
           
           map_cols_bac = {}
           col_ufc = next((c for c in df_bac_m.columns if "ufc" in c.lower()), None)
@@ -764,22 +779,24 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           if col_scc: map_cols_bac[col_scc] = "SCC_Val"
           
           if map_cols_bac:
-              df_bac_clean = df_bac_m[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
+              df_bac_clean = df_bac_m[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
               for c in map_cols_bac.values(): 
                   df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
               
-              df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
+              df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
               for offset in [1, 2, 3]:
-                  df_fall = df_mhsa[["Num_Tambo", "Fecha"]].copy()
+                  df_fall = df_mhsa[["Num_Tambo", "Fecha", "lab_index"]].copy()
                   df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
                   df_lab_offset = df_bac_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-                  df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada"], how="left")
+                  df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada", "lab_index"], how="left")
                   for c in map_cols_bac.values():
                       if c in df_mhsa.columns and c in df_fall.columns:
                           df_mhsa[c] = df_mhsa[c].combine_first(df_fall[c])
                       
               if "UFC_Val" in df_mhsa.columns: df_mhsa["UFC"] = df_mhsa["UFC_Val"]
               if "SCC_Val" in df_mhsa.columns: df_mhsa["SCC"] = df_mhsa["SCC_Val"]
+
+      df_mhsa = df_mhsa.drop(columns=["lab_index"], errors="ignore")
 
     st.sidebar.subheader("Filtros Mastellone")
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
