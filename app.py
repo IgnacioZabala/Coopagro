@@ -154,11 +154,19 @@ def clasificar_lote_general(lote_str):
   return prod_nombre, grupo
 
 # =========================================================================
-# FUNCIONES DE PDF BLINDADAS (Logo y Espaciado Dinámico)
+# FUNCIONES DE PDF BLINDADAS
 # =========================================================================
+def limpiar_valor_str(val):
+    """Fuerza cualquier valor nulo, NaN o string 'nan' a un guion para el PDF"""
+    if pd.isna(val): return "-"
+    s = str(val).strip()
+    if s.lower() == "nan" or s == "<na>" or s == "": return "-"
+    return s
+
 def parse_valor_celda(val):
   if pd.isna(val) or val == "-": return 0.0
   s = str(val).replace("%", "").strip()
+  if s.lower() == "nan": return 0.0
   try:
     return float(s.replace(",", "."))
   except ValueError:
@@ -202,13 +210,14 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
 
   for row in df_datos.itertuples(index=False):
     for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
-      val = fn_mapeo(row)
+      val_crudo = fn_mapeo(row)
+      val_limpio = limpiar_valor_str(val_crudo)
       col_name = headers_ajustados[i][0]
       align = "L" if "Nombre" in col_name or "Producto" in col_name or "Insumo" in col_name or "Tambo" in col_name else "C"
       
       is_red = False
       if "UFC" in col_name or "SCC" in col_name:
-          num_val = parse_valor_celda(val)
+          num_val = parse_valor_celda(val_limpio)
           if "UFC" in col_name and num_val > 200: is_red = True
           if "SCC" in col_name and num_val > 400: is_red = True
       
@@ -219,7 +228,7 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
           pdf.set_text_color(0, 0, 0)
           pdf.set_font("Arial", "", 8)
 
-      pdf.cell(col_w, 7, str(val), 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
+      pdf.cell(col_w, 7, val_limpio, 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
   
   pdf.set_text_color(0, 0, 0)
 
@@ -268,20 +277,35 @@ def enviar_correo_productor(destinatario_email, nombre_contacto, tambo_nombre, p
     destinatarios = [e.strip() for e in destinatario_email.replace(";", ",").split(",") if e.strip()]
     msg["To"] = ", ".join(destinatarios)
     msg["Subject"] = f"Resumen {tipo_reporte.capitalize()} de Recolección - {tambo_nombre}"
-    cuerpo_html = f"<html><body><p>Buenas tardes, <b>{nombre_contacto}</b>:</p><p>Le adjunto el resumen {tipo_reporte} de recolección y calidad de leche.</p></body></html>"
+    
+    cuerpo_html = f"""
+    <html>
+        <body>
+            <p>Buenas tardes, <b>{nombre_contacto}</b>:</p>
+            <p>Adjuntamos el resumen {tipo_reporte} de recolección y calidad de leche correspondiente a su tambo.</p>
+            <p>Ante cualquier consulta, quedamos a entera disposición.</p>
+            <br>
+            <p>Saludos cordiales,<br>
+            <b>Ignacio Zabala</b><br>
+            Administración - Coopagro</p>
+        </body>
+    </html>
+    """
     msg.attach(MIMEText(cuerpo_html, "html"))
     part = MIMEBase("application", "octet-stream")
     part.set_payload(pdf_bytes)
     encoders.encode_base64(part)
     part.add_header("Content-Disposition", f'attachment; filename="{nombre_archivo}"')
     msg.attach(part)
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+    
+    # Usando el servidor de Microsoft 365 / Outlook
+    with smtplib.SMTP("smtp.office365.com", 587) as server:
       server.starttls()
       server.login(remitente, password)
       server.sendmail(remitente, destinatarios, msg.as_string())
     return True
   except Exception as e:
-    st.error(f"Error de envío SMTP: {e}")
+    # Mostramos el error en silencio para que no detenga el bucle masivo, o en consola
     return False
 
 # =========================================================================
@@ -588,14 +612,12 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           if v_ufc and "UFC" in df_per: df_tabla_visual["UFC <200"] = df_per["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
           if v_scc and "SCC" in df_per: df_tabla_visual["SCC <400"] = df_per["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
 
-          # --- LÓGICA DE ESTILOS PARA CELDAS ROJAS EN LA INTERFAZ DE COOPAGRO ---
           def highlight_bacsomatic(val, threshold):
               try:
                   if pd.notna(val) and str(val) != "-":
                       num_val = float(str(val).replace(".", "").replace(",", "."))
                       if num_val > threshold: return 'color: red; font-weight: bold'
-              except:
-                  pass
+              except: pass
               return ''
 
           df_style_coop = df_tabla_visual.style
@@ -608,7 +630,51 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
     elif vista_coop == "Envío Masivo Semanal":
       st.header("📤 Envío Masivo Semanal")
-      st.info("Configuración de correos lista para enviar.")
+      
+      ciclos = df[["Fecha_Cierre_Viernes", "Ciclo_Semana"]].drop_duplicates().sort_values("Fecha_Cierre_Viernes", ascending=False)["Ciclo_Semana"].tolist()
+      ciclo_masivo = st.selectbox("Seleccione el Cierre de Semana a procesar:", ciclos) if ciclos else ""
+      
+      if ciclo_masivo:
+          df_semana = df[df["Ciclo_Semana"] == ciclo_masivo]
+          tambos_activos = df_semana["Num_Tambo"].unique()
+          
+          st.info(f"Se detectaron entregas de **{len(tambos_activos)} tambos** en la semana seleccionada.")
+          
+          if st.button("🚀 Iniciar Envío Masivo a Productores", type="primary"):
+              barra_progreso = st.progress(0)
+              estado_texto = st.empty()
+              
+              enviados = 0
+              errores = 0
+              omitidos = 0
+              
+              for i, t_id in enumerate(tambos_activos):
+                  df_t = df_semana[df_semana["Num_Tambo"] == t_id].sort_values(["Fecha", "N_Remito"])
+                  t_nombre = df_t["Tambo"].iloc[0]
+                  
+                  info_c = df_contactos[df_contactos["Num_Tambo"] == str(t_id)]
+                  email_t = info_c["Email"].values[0] if not info_c.empty and pd.notna(info_c["Email"].values[0]) else ""
+                  nom_c = info_c["Contacto_Nombre"].values[0] if not info_c.empty and pd.notna(info_c["Contacto_Nombre"].values[0]) else "Productor"
+                  
+                  if email_t:
+                      estado_texto.text(f"Generando PDF y enviando a {t_nombre} ({email_t})...")
+                      
+                      args_vis = {"temp": True, "grasa": True, "prot": True, "crios": True, "ufc": True, "scc": True}
+                      periodo_pdf = f"{df_t['Fecha_Inicio_Sabado'].iloc[0]:%d/%m/%Y} al {df_t['Fecha_Cierre_Viernes'].iloc[0]:%d/%m/%Y}"
+                      
+                      pdf_b = generar_pdf_bytes(df_t, t_nombre, t_id, periodo_pdf, args_vis, es_mensual=False)
+                      nom_arch = f"Resumen_Semanal_{t_nombre.replace(' ', '_')}.pdf"
+                      
+                      exito = enviar_correo_productor(email_t, nom_c, t_nombre, pdf_b, nom_arch, "semanal")
+                      if exito: enviados += 1
+                      else: errores += 1
+                  else:
+                      omitidos += 1
+                      
+                  barra_progreso.progress((i + 1) / len(tambos_activos))
+              
+              estado_texto.success(f"¡Proceso finalizado! ✅ {enviados} enviados | ❌ {errores} errores | ⚠️ {omitidos} sin mail configurado.")
+
   except Exception as e:
     st.error("Error en el Módulo Coopagro:")
     st.code(traceback.format_exc())
@@ -652,13 +718,14 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
       for row in df_datos.itertuples(index=False):
           for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
-              val = fn_mapeo(row)
+              val_crudo = fn_mapeo(row)
+              val_limpio = limpiar_valor_str(val_crudo)
               col_name = headers_ajustados[i][0]
               align = "L" if "Nombre" in col_name or "Producto" in col_name or "Tambo" in col_name else "C"
               
               is_red = False
               if "UFC" in col_name or "SCC" in col_name:
-                  num_val = parse_valor_celda(val)
+                  num_val = parse_valor_celda(val_limpio)
                   if "UFC" in col_name and num_val > 200: is_red = True
                   if "SCC" in col_name and num_val > 400: is_red = True
               
@@ -669,7 +736,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   pdf.set_text_color(0, 0, 0)
                   pdf.set_font("Arial", "", 8)
 
-              pdf.cell(col_w, 7, str(val), 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
+              pdf.cell(col_w, 7, val_limpio, 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
 
       pdf.set_text_color(0, 0, 0)
 
@@ -864,18 +931,24 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
             df_m_disp["Temperatura"] = df_m_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
+            # Formateo in situ para no perder el formato porcentual en el PDF
             if "Grasa" in df_m_disp: df_m_disp["Grasa"] = df_m_disp["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Proteina" in df_m_disp: df_m_disp["Proteína"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Crioscopia" in df_m_disp: df_m_disp["Crioscopía"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
+            if "Proteina" in df_m_disp: df_m_disp["Proteina"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            if "Crioscopia" in df_m_disp: df_m_disp["Crioscopia"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
             
             if "UFC" in df_m_disp: df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC" in df_m_disp: df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
-            df_m_disp = df_m_disp.rename(columns={"Num_Tambo": "Num Tambo"})
+            # Renombres solo para la interfaz visual
+            df_m_disp_visual = df_m_disp.rename(columns={
+                "Num_Tambo": "Num Tambo",
+                "Proteina": "Proteína",
+                "Crioscopia": "Crioscopía"
+            })
             
             cols = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura"]
             for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC <200", "SCC <400"]:
-                if col_extra in df_m_disp: cols.append(col_extra)
+                if col_extra in df_m_disp_visual: cols.append(col_extra)
             
             def highlight_bacsomatic(val, threshold):
                 try:
@@ -886,14 +959,15 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                     pass
                 return ''
                 
-            df_style = df_m_disp[cols].style
+            df_style = df_m_disp_visual[cols].style
             if "UFC <200" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC <200"])
             if "SCC <400" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC <400"])
             
             st.dataframe(df_style, use_container_width=True, hide_index=True)
 
             st.markdown("---")
-            df_pdf_rec = df_m_disp.rename(columns={"Proteína": "Proteina", "Crioscopía": "Crioscopia", "UFC <200": "UFC", "SCC <400": "SCC"})
+            # Preparación exclusiva para PDF
+            df_pdf_rec = df_m_disp.rename(columns={"UFC <200": "UFC", "SCC <400": "SCC"})
             
             headers_pdf_rec = [("Fecha", 22), ("Tambo", 45), ("Litros", 18), ("Temp", 14), ("Grasa", 16), ("Proteina", 16), ("UFC <200", 25), ("SCC <400", 25)]
             mapeo_pdf_rec = [
