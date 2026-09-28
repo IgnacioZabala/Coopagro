@@ -108,6 +108,13 @@ def limpiar_tambo(val) -> str:
   if pd.isna(val): return ""
   s = str(val).strip().upper()
   if s.endswith(".0"): s = s[:-2]
+  match = re.search(r'(\d+)\s*([\-\/\s])\s*(\d+)', s)
+  if match:
+      num1 = match.group(1)
+      sep = match.group(2)
+      num2 = match.group(3)
+      if sep in ['-', '/'] or (len(num1) <= 2 and len(num2) == 1):
+          return f"T{num1}-{num2}"
   if s and s[0].isdigit(): return f"T{s}"
   return s
 
@@ -115,18 +122,24 @@ def extraer_id_tambo(texto) -> str:
   if pd.isna(texto): return ""
   
   s_temp = str(texto).strip()
-  # Corrección: Excel a veces convierte automáticamente "16-1" o "16-2" a fechas (ej: "2026-01-16 00:00:00")
   if re.match(r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$', s_temp):
       try:
           dt = pd.to_datetime(s_temp)
-          # Reconstruimos asumiendo que el día era el tambo y el mes el sub-tambo (ej. 16 y 1)
           s_temp = f"{dt.day}-{dt.month}"
       except:
           pass
           
   s = s_temp.upper()
-  match = re.match(r'^[^\d]*([\d\-]+)', s)
-  if match: return f"T{match.group(1)}"
+  match = re.search(r'(\d+)\s*([\-\/\s])\s*(\d+)', s)
+  if match:
+      num1 = match.group(1)
+      sep = match.group(2)
+      num2 = match.group(3)
+      if sep in ['-', '/'] or (len(num1) <= 2 and len(num2) == 1):
+          return f"T{num1}-{num2}"
+          
+  match_single = re.match(r'^[^\d]*(\d+)', s)
+  if match_single: return f"T{match_single.group(1)}"
   return s.strip()
 
 def extraer_fecha_texto(texto) -> pd.Timestamp:
