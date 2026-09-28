@@ -114,7 +114,7 @@ def limpiar_tambo(val) -> str:
 def extraer_id_tambo(texto) -> str:
   if pd.isna(texto): return ""
   s = str(texto).upper()
-  match = re.match(r'^[^\d]*(\d+)', s)
+  match = re.match(r'^[^\d]*([\d\-]+)', s)
   if match: return f"T{match.group(1)}"
   return s.strip()
 
