@@ -113,7 +113,18 @@ def limpiar_tambo(val) -> str:
 
 def extraer_id_tambo(texto) -> str:
   if pd.isna(texto): return ""
-  s = str(texto).upper()
+  
+  s_temp = str(texto).strip()
+  # Corrección: Excel a veces convierte automáticamente "16-1" o "16-2" a fechas (ej: "2026-01-16 00:00:00")
+  if re.match(r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$', s_temp):
+      try:
+          dt = pd.to_datetime(s_temp)
+          # Reconstruimos asumiendo que el día era el tambo y el mes el sub-tambo (ej. 16 y 1)
+          s_temp = f"{dt.day}-{dt.month}"
+      except:
+          pass
+          
+  s = s_temp.upper()
   match = re.match(r'^[^\d]*([\d\-]+)', s)
   if match: return f"T{match.group(1)}"
   return s.strip()
