@@ -1149,8 +1149,11 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     tot_ingresados_c = df_r_filtered['Litros Ingresados'].sum() if not df_r_filtered.empty else 0
     tot_proc_c = df_p_filtered['Litros Procesados'].sum() if not df_p_filtered.empty else 0
     
+    # 1. Separamos el neto (F) del total para mostrarlo correctamente
     tot_pt_neto = df_p_filtered['Producto Terminado'].sum() if not df_p_filtered.empty else 0
     tot_pnc_c = df_p_filtered['PNC'].sum() if not df_p_filtered.empty else 0
+    
+    # La masa total se usa para el cálculo de ratios
     tot_pt_c = tot_pt_neto + tot_pnc_c
     
     ratio_proc_c = (tot_pt_c / tot_proc_c * 100) if tot_proc_c > 0 else 0
@@ -1159,7 +1162,8 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     col1, col2, col3 = st.columns(3)
     col1.metric("Litros Ingresados", formato_miles(tot_ingresados_c))
     col2.metric("Litros Procesados", formato_miles(tot_proc_c))
-    col3.metric("Producto Terminado", formato_miles(tot_pt_c))
+    # Acotamos el KPI principal a la Columna F
+    col3.metric("Producto Terminado", formato_miles(tot_pt_neto))
 
     col4, col5, col6 = st.columns(3)
     col4.metric("PNC (No Conforme)", formato_miles(tot_pnc_c))
@@ -1172,13 +1176,17 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         df_p_show['Fecha_Dt'] = df_p_show['Fecha']
         df_p_show['Fecha'] = df_p_show['Fecha_Dt'].dt.strftime('%d/%m/%Y')
         
+        # 2. Respaldamos la variable numérica para el divisor
         df_p_show['Litros Procesados Num'] = df_p_show['Litros Procesados']
-        df_p_show['PT_Total_Lote'] = df_p_show['Producto Terminado'] + df_p_show['PNC']
         
-        df_p_show['Litros Procesados'] = df_p_show['Litros Procesados'].apply(formato_miles)
-        df_p_show['Producto Terminado'] = df_p_show['PT_Total_Lote'].apply(formato_miles)
-        df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
+        # 3. Sumamos F + PNC para calcular el ratio preciso
+        df_p_show['PT_Total_Lote'] = df_p_show['Producto Terminado'] + df_p_show['PNC']
         df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(x['PT_Total_Lote'] / x['Litros Procesados Num'] * 100):.2f}%" if x['Litros Procesados Num'] > 0 else "0.00%", axis=1)
+        
+        # 4. Formateamos dejando "Producto Terminado" como el valor crudo
+        df_p_show['Litros Procesados'] = df_p_show['Litros Procesados'].apply(formato_miles)
+        df_p_show['Producto Terminado'] = df_p_show['Producto Terminado'].apply(formato_miles)
+        df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
         
         st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']], use_container_width=True, hide_index=True)
         
@@ -1196,10 +1204,11 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         anio_pdf = str(f_anio_p) if f_anio_p != "Todos" else "General"
         subtitulo_periodo = f"Período: {mes_nombre_pdf} {anio_pdf}" if f_mes_p != "Todos" else f"Período: Año {anio_pdf}"
 
+        # Actualizamos la métrica en PDF para que refleje el valor neto (F)
         metricas_pdf_coop = [
             f"Total Litros Ingresados: {formato_miles(tot_ingresados_c)} L",
             f"Total Litros Procesados: {formato_miles(tot_proc_c)} L",
-            f"Total Producto Terminado: {formato_miles(tot_pt_c)} kg",
+            f"Total Producto Terminado: {formato_miles(tot_pt_neto)} kg",
             f"Ratio Litros Procesados / Producto Terminado: {ratio_proc_c:.2f}%",
             f"Ratio Litros Ingresados / Producto Terminado: {ratio_ing_c:.2f}%"
         ]
