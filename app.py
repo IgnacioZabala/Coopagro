@@ -950,6 +950,22 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     with tab1:
         st.subheader("Recepción y Calidad de Tambos Mastellone")
         if not df_mhsa_f.empty:
+            
+            # --- NUEVAS MÉTRICAS: Grasa y Proteína Ponderada ---
+            grasa_p_m = calcular_promedio_ponderado(df_mhsa_f, "Grasa")
+            prot_p_m = calcular_promedio_ponderado(df_mhsa_f, "Proteina")
+
+            mostrar_grasa = pd.notna(grasa_p_m) and grasa_p_m > 0
+            mostrar_prot = pd.notna(prot_p_m) and prot_p_m > 0
+
+            if mostrar_grasa or mostrar_prot:
+                col_g, col_p, _ = st.columns([1, 1, 2])
+                if mostrar_grasa:
+                    col_g.metric("Grasa Ponderada", f"{grasa_p_m:.2f}%".replace(".", ","))
+                if mostrar_prot:
+                    col_p.metric("Proteína Ponderada", f"{prot_p_m:.2f}%".replace(".", ","))
+            # ---------------------------------------------------
+            
             df_m_disp = df_mhsa_f.sort_values(by=["Fecha", "Num_Tambo"]).copy()
             df_m_disp["Fecha"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
             df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
@@ -1010,8 +1026,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             
             tambos_activos_m = df_mhsa_f["Num_Tambo"].nunique()
             temp_prom_m = df_mhsa_f["Temperatura"].mean() if "Temperatura" in df_mhsa_f else float("nan")
-            grasa_p_m = calcular_promedio_ponderado(df_mhsa_f, "Grasa")
-            prot_p_m = calcular_promedio_ponderado(df_mhsa_f, "Proteina")
             ratio_gp_m = grasa_p_m / prot_p_m if (prot_p_m and prot_p_m > 0) else pd.NA
 
             grasa_str_m = f"{grasa_p_m:.2f}%".replace(".", ",") if pd.notna(grasa_p_m) else "S/D"
