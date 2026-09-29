@@ -992,7 +992,12 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
 
             st.markdown("---")
             # Preparación exclusiva para PDF
-            df_pdf_rec = df_m_disp.rename(columns={"UFC <200": "UFC", "SCC <400": "SCC"})
+            df_pdf_rec = df_m_disp.copy()
+            if "UFC" in df_pdf_rec.columns: 
+                df_pdf_rec = df_pdf_rec.drop(columns=["UFC"])
+            if "SCC" in df_pdf_rec.columns: 
+                df_pdf_rec = df_pdf_rec.drop(columns=["SCC"])
+            df_pdf_rec = df_pdf_rec.rename(columns={"UFC <200": "UFC", "SCC <400": "SCC"})
             
             headers_pdf_rec = [("Fecha", 22), ("Tambo", 45), ("Litros", 18), ("Temp", 14), ("Grasa", 16), ("Proteina", 16), ("UFC <200", 25), ("SCC <400", 25)]
             mapeo_pdf_rec = [
