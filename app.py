@@ -1160,6 +1160,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
     st.subheader("Detalle de Lotes de Producción Coopagro")
     if not df_p_filtered.empty:
+        # --- INICIO LÓGICA DE SÓLIDOS Y CONVERSIÓN ---
         df_p_show = df_p_filtered.copy()
         df_p_show['Fecha_Dt'] = df_p_show['Fecha']
         df_p_show['Fecha'] = df_p_show['Fecha_Dt'].dt.strftime('%d/%m/%Y')
@@ -1167,21 +1168,57 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         df_p_show['Litros Procesados Num'] = df_p_show['Litros Procesados']
         df_p_show['PT_Total_Lote'] = df_p_show['Producto Terminado'] + df_p_show['PNC']
         
+        _, _, df_lab_raw, _ = cargar_datos_coopagro(URL_REMITOS, URL_MILKO, URL_BACSOMATIC)
+        
+        if not df_lab_raw.empty:
+            df_lab = df_lab_raw.copy()
+            col_date = next((c for c in df_lab.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), df_lab.columns[0])
+            col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
+            col_prot = next((c for c in df_lab.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
+            
+            df_lab['Fecha_Recepcion'] = pd.to_datetime(df_lab[col_date], errors='coerce').dt.normalize()
+            df_lab[col_fat] = pd.to_numeric(df_lab[col_fat].astype(str).str.replace(",", "."), errors="coerce")
+            df_lab[col_prot] = pd.to_numeric(df_lab[col_prot].astype(str).str.replace(",", "."), errors="coerce")
+            
+            df_solidos = df_lab.groupby('Fecha_Recepcion')[[col_fat, col_prot]].mean().reset_index()
+            df_solidos['Solidos_Utiles'] = df_solidos[col_fat] + df_solidos[col_prot]
+            
+            # Desfase: Leche recibida ayer -> Producción de hoy (+1 día)
+            df_solidos['Fecha_Produccion_Asociada'] = df_solidos['Fecha_Recepcion'] + pd.Timedelta(days=1)
+            
+            df_p_show = pd.merge(df_p_show, df_solidos[['Fecha_Produccion_Asociada', 'Solidos_Utiles']], 
+                                 left_on='Fecha_Dt', right_on='Fecha_Produccion_Asociada', how='left')
+            
+            df_p_show['Kg Solidos en Tina'] = df_p_show['Litros Procesados Num'] * (df_p_show['Solidos_Utiles'] / 100)
+            df_p_show['Tasa de Conversión'] = df_p_show.apply(
+                lambda x: x['PT_Total_Lote'] / x['Kg Solidos en Tina'] if pd.notna(x['Kg Solidos en Tina']) and x['Kg Solidos en Tina'] > 0 else pd.NA, 
+                axis=1
+            )
+            
+            df_p_show['% Sólidos (Día -1)'] = df_p_show['Solidos_Utiles'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "S/D")
+            df_p_show['Conversión (Kg/Kg)'] = df_p_show['Tasa de Conversión'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "S/D")
+        else:
+            df_p_show['% Sólidos (Día -1)'] = "S/D"
+            df_p_show['Conversión (Kg/Kg)'] = "S/D"
+
         df_p_show['Litros Procesados'] = df_p_show['Litros Procesados'].apply(formato_miles)
         df_p_show['Producto Terminado'] = df_p_show['PT_Total_Lote'].apply(formato_miles)
         df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
         df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(x['PT_Total_Lote'] / x['Litros Procesados Num'] * 100):.2f}%" if x['Litros Procesados Num'] > 0 else "0.00%", axis=1)
         
-        st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']], use_container_width=True, hide_index=True)
+        st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote', '% Sólidos (Día -1)', 'Conversión (Kg/Kg)']], use_container_width=True, hide_index=True)
+        # --- FIN LÓGICA DE SÓLIDOS Y CONVERSIÓN ---
         
-        headers_pdf_c = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Producto Term.", 25), ("Rend.", 15)]
+        headers_pdf_c = [("Fecha", 20), ("Lote", 25), ("Producto", 45), ("Litros", 20), ("Prod.", 20), ("Rend.", 15), ("Sólidos", 15), ("Conv.", 15)]
         mapeo_pdf_c = [
             lambda r: r.Fecha if pd.notna(r.Fecha) else "",
             lambda r: str(r.Lote),
             lambda r: str(r.Producto),
             lambda r: str(r.Litros_Procesados),
             lambda r: str(r.Producto_Terminado),
-            lambda r: str(r.Rendimiento_Lote)
+            lambda r: str(r.Rendimiento_Lote),
+            lambda r: str(getattr(r, '% Sólidos (Día -1)', 'S/D')),
+            lambda r: str(getattr(r, 'Conversión (Kg/Kg)', 'S/D'))
         ]
         
         mes_nombre_pdf = MESES_ES.get(f_mes_p, str(f_mes_p)) if f_mes_p != "Todos" else "Todos los meses"
