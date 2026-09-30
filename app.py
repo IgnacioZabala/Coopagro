@@ -705,179 +705,75 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     st.code(traceback.format_exc())
 
 # =========================================================================
-# MÓDULO 2: RECEPCIÓN, PRODUCCIÓN Y CALIDAD MASTELLONE
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO
 # =========================================================================
-elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
-  st.header("🚛 Recepción, Calidad y Producción Mastellone")
+elif modulo_principal == "🧀 Producción y Rendimiento":
+  st.header("🧀 Producción y Rendimiento Coopagro")
   import datetime
   now = datetime.datetime.now()
   
   try:
-    with st.spinner("Sincronizando datos de Mastellone..."):
-      # 1. Cargar Producción (RE-PRO-52)
-      raw_prod = pd.read_excel(URL_PRODUCCION, skiprows=6)
+    with st.spinner("Sincronizando datos de producción Coopagro..."):
+      # 1. Cargar Producción General (Solapa "2026" para evitar caché)
+      raw_prod = pd.read_excel(URL_PRODUCCION, sheet_name="2026", skiprows=6)
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
       df_prod["Lote"] = raw_prod.iloc[:, 1]
       df_prod["Litros Procesados"] = raw_prod.iloc[:, 3]
       df_prod["Producto Terminado"] = raw_prod.iloc[:, 5]
       df_prod["PNC"] = raw_prod.iloc[:, 6]
+      
+      df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
       
-      df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], format="mixed", dayfirst=True, errors="coerce")
-      df_prod = df_prod.dropna(subset=["Fecha"])
-      for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
+      for col in ["Litros Procesados", "Producto Terminado", "PNC"]:
           df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
       
-      if len(df_prod) > 0: 
-          df_prod["Producto"] = df_prod["Lote"].astype(str).apply(lambda x: "Muzzarella Export. Mastellone" if "840" in str(x) else "Otro")
-          df_prod["Grupo"] = df_prod["Lote"].astype(str).apply(lambda x: "Mastellone" if "840" in str(x) else "Coopagro")
-      else: 
+      if len(df_prod) > 0:
+          df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod["Lote"].astype(str).apply(procesar_lote_mastellone))
+      else:
           df_prod["Producto"], df_prod["Grupo"] = [], []
       
       df_prod["Año"] = df_prod["Fecha"].dt.year
       df_prod["Mes"] = df_prod["Fecha"].dt.month
-      df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
-
-      # 2. Cargar Recepción Diaria (Hoja 2 de FILE_ID_MASTELLONE)
-      df_mhsa = pd.DataFrame()
-      try:
-          xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
-          sheet_mhsa = xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0]
-          
-          df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa, dtype=str)
-          
-          df_mhsa["Fecha"] = df_mhsa_raw.iloc[:, 0]
-          df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2]
-          df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
-          df_mhsa["Litros_Ticket"] = df_mhsa_raw.iloc[:, 4]
-          
-          if len(df_mhsa_raw.columns) > 7:
-              df_mhsa["Temperatura"] = df_mhsa_raw.iloc[:, 7]
-          else:
-              df_mhsa["Temperatura"] = pd.NA
-          
-          df_mhsa["Num_Tambo"] = df_mhsa["Num_Tambo"].apply(limpiar_tambo)
-          df_mhsa["Fecha"] = pd.to_datetime(df_mhsa["Fecha"], format="mixed", dayfirst=True, errors="coerce").dt.normalize()
-          df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
-          df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa["Litros_Ticket"], errors="coerce").fillna(0)
-          df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa["Temperatura"], errors="coerce")
-          
-          df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
-          df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
-          df_mhsa["orden_remito"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
-      except Exception as e:
-          st.sidebar.warning(f"Error al cargar la hoja 2 (MHSA Diario): {e}")
       
-      # 3. Cargar Litros Mes (Hoja 3: MHSA Litros Mes)
-      df_mhsa_litros = pd.DataFrame()
-      try:
-          sheet_litros = next((s for s in xls_mastellone.sheet_names if "litros" in s.lower() and "mes" in s.lower()), None)
-          if not sheet_litros and len(xls_mastellone.sheet_names) > 2:
-              sheet_litros = xls_mastellone.sheet_names[2]
-              
-          if sheet_litros:
-              df_litros_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_litros)
-              if len(df_litros_raw.columns) >= 3:
-                  df_mhsa_litros["Año"] = pd.to_numeric(df_litros_raw.iloc[:, 0], errors="coerce").fillna(2026).astype(int)
-                  df_mhsa_litros["Mes"] = pd.to_numeric(df_litros_raw.iloc[:, 1], errors="coerce").fillna(0).astype(int)
-                  df_mhsa_litros["Litros"] = pd.to_numeric(df_litros_raw.iloc[:, 2], errors="coerce").fillna(0)
-              else:
-                  df_mhsa_litros["Año"] = 2026
-                  df_mhsa_litros["Mes"] = pd.to_numeric(df_litros_raw.iloc[:, 0], errors="coerce").fillna(0).astype(int)
-                  df_mhsa_litros["Litros"] = pd.to_numeric(df_litros_raw.iloc[:, 1], errors="coerce").fillna(0)
-      except Exception as e:
-          st.sidebar.warning(f"Error al cargar la hoja 3 (Litros Mes): {e}")
+      # Filtro estricto para aislar solo producción Coopagro
+      df_coopagro_prod = df_prod[df_prod["Grupo"] == "Coopagro"].copy()
 
-      # 4. Cargar Laboratorio y cruzar con Recepción
-      _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_LAB, URL_BACSOMATIC)
+      # 2. Leer Recibo de Leche (Coopagro) usando URL_REMITOS
+      raw_recibo = pd.read_excel(URL_REMITOS)
+      df_recibo = pd.DataFrame()
+      df_recibo['Fecha_Raw'] = raw_recibo.iloc[:, 1] 
+      df_recibo['Litros Ingresados'] = pd.to_numeric(raw_recibo.iloc[:, 5], errors='coerce').fillna(0)
       
-      if not df_mhsa.empty:
-          if not df_lab_raw.empty:
-              df_lab_m = df_lab_raw.copy()
-              col_sample = df_lab_m.columns[0]
-              
-              df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).str.split().str[0].apply(limpiar_tambo)
-              df_lab_m["Fecha_Extraida"] = pd.to_datetime(df_lab_m[col_sample].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
-              
-              col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
-              if col_date:
-                  df_lab_m["Fecha_Analisis"] = pd.to_datetime(df_lab_m[col_date], errors="coerce").dt.normalize()
-                  df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(df_lab_m["Fecha_Analisis"])
-              else:
-                  df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"]
-              
-              df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"]).sort_values(by=["Num_Tambo", "Fecha"])
-              df_lab_m["orden_remito"] = df_lab_m.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
-              
-              map_cols = {}
-              col_fat = next((c for c in df_lab_m.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
-              col_prot = next((c for c in df_lab_m.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
-              col_fp = next((c for c in df_lab_m.columns if "fp" == c.lower() or "crios" in c.lower()), None)
-              
-              if col_fat: map_cols[col_fat] = "Grasa_Lab"
-              if col_prot: map_cols[col_prot] = "Proteina_Lab"
-              if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
-              
-              if map_cols:
-                  df_milko_clean = df_lab_m[["Num_Tambo", "Fecha", "orden_remito"] + list(map_cols.keys())].rename(columns=map_cols)
-                  for c in map_cols.values(): 
-                      df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-                  df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
+      df_recibo['Fecha'] = pd.to_datetime(df_recibo['Fecha_Raw'], dayfirst=True, errors='coerce')
+      df_recibo = df_recibo.dropna(subset=['Fecha'])
+      
+      df_recibo['Año'] = df_recibo['Fecha'].dt.year
+      df_recibo['Mes'] = df_recibo['Fecha'].dt.month
 
-          if not df_bac_raw.empty:
-              df_bac_m = df_bac_raw.copy()
-              if len(df_bac_m.columns) > 5:
-                  col_sample_bac = df_bac_m.columns[5]
-              else:
-                  col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
-              
-              df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).str.split().str[0].apply(limpiar_tambo)
-              df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).str.split().str[-1].apply(extraer_fecha_texto), errors="coerce")
-              
-              col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
-              if col_date_bac:
-                  df_bac_m["Fecha_Analisis"] = pd.to_datetime(df_bac_m[col_date_bac], errors="coerce").dt.normalize()
-                  df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(df_bac_m["Fecha_Analisis"])
-              else:
-                  df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"]
-
-              df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"]).sort_values(by=["Num_Tambo", "Fecha"])
-              df_bac_m["orden_remito"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount() + 1
-              
-              map_cols_bac = {}
-              col_ufc = next((c for c in df_bac_m.columns if "ufc" in c.lower()), None)
-              col_scc = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["scc", "celulas", "somáticas"])), None)
-              
-              if col_ufc: map_cols_bac[col_ufc] = "UFC_Val"
-              if col_scc: map_cols_bac[col_scc] = "SCC_Val"
-              
-              if map_cols_bac:
-                  df_bac_clean = df_bac_m[["Num_Tambo", "Fecha", "orden_remito"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
-                  for c in map_cols_bac.values(): 
-                      df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
-                  df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha", "orden_remito"], how="left")
+      recibo_mensual = df_recibo.groupby(['Año', 'Mes'])['Litros Ingresados'].sum().reset_index()
 
     # ==========================================
-    # FILTROS POR DEFECTO DINÁMICOS (ÚNICOS)
+    # FILTROS LATERALES (Claves únicas)
     # ==========================================
-    st.sidebar.subheader("Filtros Mastellone")
-    anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
-    anios_prod = df_mastellone_prod["Año"].dropna().unique().tolist() if not df_mastellone_prod.empty else []
-    todos_anios = sorted(list(set(anios_mhsa + anios_prod + df_mhsa_litros["Año"].tolist() if not df_mhsa_litros.empty else [])))
+    st.sidebar.subheader("Filtros Producción Coopagro")
+    anios_prod = df_coopagro_prod["Año"].dropna().unique().tolist() if not df_coopagro_prod.empty else []
+    anios_recibo = recibo_mensual["Año"].dropna().unique().tolist() if not recibo_mensual.empty else []
+    todos_anios = sorted(list(set(anios_prod + anios_recibo)))
     
     opciones_anio = ["Todos"] + (todos_anios if todos_anios else [now.year])
     default_anio_idx = opciones_anio.index(now.year) if now.year in opciones_anio else 0
-    filtro_anio = st.sidebar.selectbox("Año", opciones_anio, index=default_anio_idx, key="m_anio_mastellone")
+    filtro_anio = st.sidebar.selectbox("Año", opciones_anio, index=default_anio_idx, key="coop_prod_anio")
 
     opciones_mes = ["Todos"] + list(range(1, 13))
     default_mes_idx = opciones_mes.index(now.month) if now.month in opciones_mes else 0
-    filtro_mes = st.sidebar.selectbox("Mes", opciones_mes, index=default_mes_idx, key="m_mes_mastellone")
+    filtro_mes = st.sidebar.selectbox("Mes", opciones_mes, index=default_mes_idx, key="coop_prod_mes")
 
     # ==========================================
     # CÁLCULOS Y MÉTRICAS
     # ==========================================
-    df_filtrado = df_mastellone_prod.copy()
+    df_filtrado = df_coopagro_prod.copy()
     if len(df_filtrado) > 0:
       if filtro_anio != "Todos": df_filtrado = df_filtrado[df_filtrado["Año"] == filtro_anio]
       if filtro_mes != "Todos": df_filtrado = df_filtrado[df_filtrado["Mes"] == filtro_mes]
@@ -886,41 +782,24 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     if len(df_filtrado) > 0:
       df_consolidado_raw = df_filtrado.copy()
       df_consolidado_raw["PT_Total"] = df_consolidado_raw["Producto Terminado"] + df_consolidado_raw["PNC"]
-      df_consolidado_raw["Ratio Consolidado (%)"] = df_consolidado_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
-      df_consolidado = df_consolidado_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio Consolidado (%)"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio Consolidado (%)": "Ratio de Conversión (%)"})
+      df_consolidado_raw["Ratio Consolidado (%)"] = df_consolidado_raw.apply(
+          lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1
+      )
+      df_consolidado = df_consolidado_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio Consolidado (%)"]].rename(
+          columns={"PT_Total": "Producto Terminado", "Ratio Consolidado (%)": "Ratio de Conversión (%)"}
+      )
 
-    df_mhsa_litros_f = df_mhsa_litros.copy()
-    if not df_mhsa_litros_f.empty:
-        if filtro_anio != "Todos": df_mhsa_litros_f = df_mhsa_litros_f[df_mhsa_litros_f["Año"] == int(filtro_anio)]
-        if filtro_mes != "Todos": df_mhsa_litros_f = df_mhsa_litros_f[df_mhsa_litros_f["Mes"] == int(filtro_mes)]
-        total_litros_ingresados = df_mhsa_litros_f["Litros"].sum()
-    else:
-        total_litros_ingresados = 0.0
+    total_litros_ingresados = 0.0
+    if not recibo_mensual.empty:
+      df_recibo_f = recibo_mensual.copy()
+      if filtro_anio != "Todos": df_recibo_f = df_recibo_f[df_recibo_f["Año"] == filtro_anio]
+      if filtro_mes != "Todos": df_recibo_f = df_recibo_f[df_recibo_f["Mes"] == filtro_mes]
+      total_litros_ingresados = df_recibo_f["Litros Ingresados"].sum()
 
     total_litros_proc = df_filtrado["Litros Procesados"].sum() if len(df_filtrado) > 0 else 0
     total_prod_consolidado = df_consolidado["Producto Terminado"].sum() if len(df_consolidado) > 0 else 0
     ratio_ponderado = (total_prod_consolidado / total_litros_proc * 100) if total_litros_proc > 0 else 0
     rendimiento_ingreso = (total_prod_consolidado / total_litros_ingresados * 100) if total_litros_ingresados > 0 else 0
-
-    # --- INICIO CÁLCULO DE SÓLIDOS PONDERADOS (DÍA ANTERIOR) ---
-    df_diario = pd.DataFrame()
-    if not df_mhsa.empty:
-        df_mhsa = df_mhsa.drop(columns=["lab_index"], errors="ignore")
-        if 'Grasa_Lab' in df_mhsa.columns and 'Proteina_Lab' in df_mhsa.columns:
-            df_mhsa_solidos = df_mhsa.dropna(subset=['Grasa_Lab', 'Proteina_Lab', 'Litros_Ticket']).copy()
-            if not df_mhsa_solidos.empty:
-                df_mhsa_solidos['Kg_Grasa'] = pd.to_numeric(df_mhsa_solidos['Grasa_Lab'], errors='coerce') * df_mhsa_solidos['Litros_Ticket'] / 100
-                df_mhsa_solidos['Kg_Proteina'] = pd.to_numeric(df_mhsa_solidos['Proteina_Lab'], errors='coerce') * df_mhsa_solidos['Litros_Ticket'] / 100
-                
-                df_diario = df_mhsa_solidos.groupby('Fecha').agg({
-                    'Litros_Ticket': 'sum',
-                    'Kg_Grasa': 'sum',
-                    'Kg_Proteina': 'sum'
-                }).reset_index()
-                
-                df_diario['Solidos_Utiles'] = (df_diario['Kg_Grasa'] + df_diario['Kg_Proteina']) / df_diario['Litros_Ticket'] * 100
-                df_diario['Fecha_Produccion_Asociada'] = df_diario['Fecha'] + pd.Timedelta(days=1)
-    # --- FIN CÁLCULO DE SÓLIDOS PONDERADOS ---
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Litros Ingresados Brutos", formato_miles(total_litros_ingresados))
@@ -931,123 +810,61 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     c4.metric("Ratio PT / Procesados", f"{ratio_ponderado:.2f}%")
     c5.metric("Ratio PT / Ingresados", f"{rendimiento_ingreso:.2f}%")
 
-    # ==========================================
-    # VISUALIZACIÓN EN TABS
-    # ==========================================
-    tab1, tab2 = st.tabs(["📑 Recepción y Calidad (MHSA)", "🏭 Producción Fasón"])
-    
-    with tab1:
-        st.subheader("Recepción y Calidad de Tambos Mastellone")
-        df_mhsa_filtrado = df_mhsa.copy()
-        if not df_mhsa_filtrado.empty:
-            if filtro_anio != "Todos": df_mhsa_filtrado = df_mhsa_filtrado[df_mhsa_filtrado["Año"] == filtro_anio]
-            if filtro_mes != "Todos": df_mhsa_filtrado = df_mhsa_filtrado[df_mhsa_filtrado["Mes"] == filtro_mes]
+    st.subheader("Registro de Lotes Coopagro")
+    if not df_consolidado.empty:
+        df_consolidado_disp = df_consolidado.copy()
+        df_consolidado_disp["Fecha"] = df_consolidado_disp["Fecha"].dt.strftime("%d/%m/%Y")
+        df_consolidado_disp["Litros Procesados"] = df_consolidado_disp["Litros Procesados"].apply(formato_miles)
+        df_consolidado_disp["Producto Terminado"] = df_consolidado_disp["Producto Terminado"].apply(formato_miles)
+        st.dataframe(df_consolidado_disp, use_container_width=True, hide_index=True)
         
-        if not df_mhsa_filtrado.empty:
-            df_mhsa_disp = df_mhsa_filtrado.copy()
-            df_mhsa_disp = df_mhsa_disp.sort_values(by=["Fecha", "Num_Tambo"])
-            df_mhsa_disp["Fecha"] = df_mhsa_disp["Fecha"].dt.strftime("%d/%m/%Y")
-            df_mhsa_disp["Litros_Ticket"] = df_mhsa_disp["Litros_Ticket"].apply(formato_miles)
-            df_mhsa_disp["Temperatura"] = df_mhsa_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
-            
-            if "Grasa_Lab" in df_mhsa_disp: df_mhsa_disp["Grasa"] = df_mhsa_disp["Grasa_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Proteina_Lab" in df_mhsa_disp: df_mhsa_disp["Proteína"] = df_mhsa_disp["Proteina_Lab"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Crioscopia_Lab" in df_mhsa_disp: df_mhsa_disp["Crioscopía"] = df_mhsa_disp["Crioscopia_Lab"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
-            if "UFC_Val" in df_mhsa_disp: df_mhsa_disp["UFC"] = df_mhsa_disp["UFC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
-            if "SCC_Val" in df_mhsa_disp: df_mhsa_disp["SCC"] = df_mhsa_disp["SCC_Val"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
-            
-            cols_to_show = ["Fecha", "Num_Tambo", "Tambo", "Litros_Ticket", "Temperatura"]
-            if "Grasa" in df_mhsa_disp: cols_to_show.append("Grasa")
-            if "Proteína" in df_mhsa_disp: cols_to_show.append("Proteína")
-            if "Crioscopía" in df_mhsa_disp: cols_to_show.append("Crioscopía")
-            if "UFC" in df_mhsa_disp: cols_to_show.append("UFC")
-            if "SCC" in df_mhsa_disp: cols_to_show.append("SCC")
-            
-            df_mhsa_disp = df_mhsa_disp.rename(columns={"Litros_Ticket": "Litros"})
-            cols_to_show[cols_to_show.index("Litros_Ticket")] = "Litros"
+        # Generación del PDF nativo normalizado a bytes
+        try:
+            headers_pdf = [("Fecha", 25), ("Lote", 25), ("Producto", 60), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Rendimiento", 25)]
+            mapeo_pdf = [
+                lambda r: r.Fecha if pd.notna(r.Fecha) else "",
+                lambda r: str(r.Lote),
+                lambda r: str(r.Producto),
+                lambda r: str(getattr(r, 'Litros_Procesados', getattr(r, 'Litros Procesados', ''))),
+                lambda r: str(getattr(r, 'Producto_Terminado', getattr(r, 'Producto Terminado', ''))),
+                lambda r: str(getattr(r, 'Ratio_Conversion', getattr(r, 'Ratio de Conversión (%)', '')))
+            ]
 
-            st.dataframe(df_mhsa_disp[cols_to_show], use_container_width=True, hide_index=True)
-        else:
-            st.info("No hay registros de recepción para el período seleccionado.")
+            df_consolidado_pdf = df_consolidado_disp.rename(columns={
+                "Litros Procesados": "Litros_Procesados",
+                "Producto Terminado": "Producto_Terminado",
+                "Ratio de Conversión (%)": "Ratio_Conversion",
+            })
 
-    with tab2:
-        st.subheader("Registro de Lotes Fasón (Mastellone - Código 840)")
-        if not df_consolidado.empty:
-            df_c_disp = df_consolidado.copy()
-            df_c_disp["Fecha_Dt"] = df_c_disp["Fecha"]
-            df_c_disp["Litros Procesados Num"] = df_c_disp["Litros Procesados"]
-            df_c_disp["Producto Terminado Num"] = df_c_disp["Producto Terminado"]
+            mes_nombre = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
+            titulo_pdf = f"Reporte de Producción Coopagro {mes_nombre} {filtro_anio}"
+            subt = f"Período: {mes_nombre} {filtro_anio}"
             
-            # Cruzar con los sólidos del día anterior
-            if not df_diario.empty:
-                df_c_disp = pd.merge(df_c_disp, df_diario[['Fecha_Produccion_Asociada', 'Solidos_Utiles']], 
-                                     left_on='Fecha_Dt', right_on='Fecha_Produccion_Asociada', how='left')
-            else:
-                df_c_disp['Solidos_Utiles'] = pd.NA
+            metricas_prod = [
+                f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L",
+                f"Total Litros Procesados: {formato_miles(total_litros_proc)} L",
+                f"Total Producto Terminado: {formato_miles(total_prod_consolidado)} kg",
+                f"Rendimiento (PT / Procesados): {ratio_ponderado:.2f}%",
+                f"Rendimiento (PT / Ingresados): {rendimiento_ingreso:.2f}%"
+            ]
             
-            df_c_disp['Kg Solidos en Tina'] = df_c_disp['Litros Procesados Num'] * (df_c_disp['Solidos_Utiles'] / 100)
-            df_c_disp['Tasa de Conversión'] = df_c_disp.apply(
-                lambda x: x['Producto Terminado Num'] / x['Kg Solidos en Tina'] if pd.notna(x.get('Kg Solidos en Tina')) and x.get('Kg Solidos en Tina', 0) > 0 else pd.NA, 
-                axis=1
-            )
+            if 'generar_pdf_base' in globals():
+                pdf_bytes = generar_pdf_base(titulo_pdf, subt, metricas_prod, headers_pdf, df_consolidado_pdf, mapeo_pdf)
+                st.download_button(
+                    "📥 Descargar Reporte PDF", 
+                    data=pdf_bytes, 
+                    file_name=f"{filtro_mes}- Reporte de Producción Coopagro {mes_nombre} {filtro_anio}.pdf", 
+                    mime="application/pdf"
+                )
+        except Exception as e_pdf:
+            st.warning(f"No se pudo generar el PDF temporalmente: {e_pdf}")
             
-            df_c_disp['% Sólidos (Día -1)'] = df_c_disp['Solidos_Utiles'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "S/D")
-            df_c_disp['Conversión (Kg/Kg)'] = df_c_disp['Tasa de Conversión'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "S/D")
-            
-            df_c_disp["Fecha"] = df_c_disp["Fecha_Dt"].dt.strftime("%d/%m/%Y")
-            df_c_disp["Litros Procesados"] = df_c_disp["Litros Procesados Num"].apply(formato_miles)
-            df_c_disp["Producto Terminado"] = df_c_disp["Producto Terminado Num"].apply(formato_miles)
-            
-            st.dataframe(df_c_disp[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'Ratio de Conversión (%)', '% Sólidos (Día -1)', 'Conversión (Kg/Kg)']], use_container_width=True, hide_index=True)
-            
-            # Preparación y Mapeo del PDF
-            try:
-                headers_pdf = [("Fecha", 20), ("Lote", 25), ("Producto", 45), ("Litros", 20), ("Prod.", 20), ("Rend.", 15), ("Sólidos", 15), ("Conv.", 15)]
-                mapeo_pdf = [
-                    lambda r: r.Fecha if pd.notna(r.Fecha) else "",
-                    lambda r: str(r.Lote),
-                    lambda r: str(r.Producto),
-                    lambda r: str(getattr(r, 'Litros_Procesados', getattr(r, 'Litros Procesados', ''))),
-                    lambda r: str(getattr(r, 'Producto_Terminado', getattr(r, 'Producto Terminado', ''))),
-                    lambda r: str(getattr(r, 'Ratio_Conversion', getattr(r, 'Ratio de Conversión (%)', ''))),
-                    lambda r: str(getattr(r, '% Sólidos (Día -1)', 'S/D')),
-                    lambda r: str(getattr(r, 'Conversión (Kg/Kg)', 'S/D'))
-                ]
-    
-                df_consolidado_pdf = df_c_disp.rename(columns={
-                    "Litros Procesados": "Litros_Procesados",
-                    "Producto Terminado": "Producto_Terminado",
-                    "Ratio de Conversión (%)": "Ratio_Conversion",
-                })
-    
-                ratio_ingresados = (total_prod_consolidado / total_litros_ingresados * 100) if total_litros_ingresados > 0 else 0
-                
-                # Asumiendo que MESES_ES existe en tu código general
-                mes_nombre_m = str(filtro_mes) if filtro_mes != "Todos" else "Todos"
-                subt_mast = f"Período: {mes_nombre_m} {filtro_anio}"
-                
-                metricas_prod = [
-                    f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L",
-                    f"Total Litros Procesados: {formato_miles(total_litros_proc)} L",
-                    f"Total Producto Terminado: {formato_miles(total_prod_consolidado)} kg",
-                    f"Rendimiento (PT / Procesados): {ratio_ponderado:.2f}%",
-                    f"Rendimiento (PT / Ingresados): {ratio_ingresados:.2f}%"
-                ]
-                
-                if 'generar_pdf_mastellone_sin_logo' in globals():
-                    pdf_mast_bytes = generar_pdf_mastellone_sin_logo("Reporte de Producción Fasón - Mastellone", subt_mast, metricas_prod, headers_pdf, df_consolidado_pdf, mapeo_pdf)
-                else:
-                    pdf_mast_bytes = generar_pdf_base("Reporte de Producción Fasón - Mastellone", subt_mast, metricas_prod, headers_pdf, df_consolidado_pdf, mapeo_pdf)
-                
-                st.download_button("📥 Descargar Reporte Producción PDF", data=pdf_mast_bytes, file_name="Reporte_Produccion_Mastellone.pdf", mime="application/pdf")
-            except Exception as e_pdf:
-                st.warning(f"No se pudo renderizar el PDF temporalmente: {e_pdf}")
-        else:
-            st.info("No hay producción de lotes Mastellone para el período seleccionado.")
+    else:
+        st.info("No hay producción de lotes Coopagro para el período seleccionado.")
 
   except Exception as e:
-    st.error("Se produjo un error procesando los datos de Mastellone:")
-    st.code(traceback.format_exc())
+    st.error("Se produjo un error procesando los datos de Producción Coopagro:")
+    st.code(str(e))
       
 # =========================================================================
 # MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO
