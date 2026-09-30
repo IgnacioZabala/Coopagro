@@ -181,7 +181,6 @@ def clasificar_lote_general(lote_str):
 # FUNCIONES DE PDF BLINDADAS
 # =========================================================================
 def limpiar_valor_str(val):
-    """Fuerza cualquier valor nulo, NaN o string 'nan' a un guion para el PDF"""
     if pd.isna(val): return "-"
     s = str(val).strip()
     if s.lower() == "nan" or s == "<na>" or s == "": return "-"
@@ -950,7 +949,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
-          df_bac_m = df_bac_m.sort_values(by=["_id_str"])
+          df_bac_m["_id_str"] = df_bac_m["_id_str"].sort_values()
           df_bac_m["lab_index"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
           
           map_cols_bac = {}
@@ -1236,21 +1235,56 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         df_p_show['Litros Procesados Num'] = df_p_show['Litros Procesados']
         df_p_show['PT_Total_Lote'] = df_p_show['Producto Terminado'] + df_p_show['PNC']
         
+        # Incorporar análisis de laboratorio con desfase de 1 día (Leche recibida el día anterior)
+        _, _, df_lab_raw, _ = cargar_datos_coopagro(URL_REMITOS, URL_MILKO, URL_BACSOMATIC)
+        
+        if not df_lab_raw.empty:
+            df_lab = df_lab_raw.copy()
+            col_date = next((c for c in df_lab.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), df_lab.columns[0])
+            col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
+            col_prot = next((c for c in df_lab.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
+            
+            df_lab['Fecha_Recepcion'] = pd.to_datetime(df_lab[col_date], errors='coerce').dt.normalize()
+            if col_fat: df_lab[col_fat] = pd.to_numeric(df_lab[col_fat].astype(str).str.replace(",", "."), errors="coerce")
+            if col_prot: df_lab[col_prot] = pd.to_numeric(df_lab[col_prot].astype(str).str.replace(",", "."), errors="coerce")
+            
+            cols_agrupar = [c for c in [col_fat, col_prot] if c]
+            if cols_agrupar:
+                df_solidos = df_lab.groupby('Fecha_Recepcion')[cols_agrupar].mean().reset_index()
+                df_solidos['Solidos_Utiles_Pct'] = df_solidos[cols_agrupar].sum(axis=1)
+                
+                # Desfase: Producción de hoy usa la leche recibida ayer (Fecha_Produccion = Fecha_Recepcion + 1 día)
+                df_solidos['Fecha_Produccion_Asociada'] = df_solidos['Fecha_Recepcion'] + pd.Timedelta(days=1)
+                
+                df_p_show = pd.merge(df_p_show, df_solidos[['Fecha_Produccion_Asociada', 'Solidos_Utiles_Pct']], 
+                                     left_on='Fecha_Dt', right_on='Fecha_Produccion_Asociada', how='left')
+                
+                df_p_show['Kg Solidos en Tina'] = df_p_show['Litros Procesados Num'] * (df_p_show['Solidos_Utiles_Pct'] / 100)
+                df_p_show['Ratio Sólidos / Muzzarella'] = df_p_show.apply(
+                    lambda x: f"{x['PT_Total_Lote'] / x['Kg Solidos en Tina']:.2f}" if pd.notna(x['Kg Solidos en Tina']) and x['Kg Solidos en Tina'] > 0 else "S/D", 
+                    axis=1
+                )
+            else:
+                df_p_show['Ratio Sólidos / Muzzarella'] = "S/D"
+        else:
+            df_p_show['Ratio Sólidos / Muzzarella'] = "S/D"
+
         df_p_show['Litros Procesados'] = df_p_show['Litros Procesados'].apply(formato_miles)
         df_p_show['Producto Terminado'] = df_p_show['PT_Total_Lote'].apply(formato_miles)
         df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
         df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(x['PT_Total_Lote'] / x['Litros Procesados Num'] * 100):.2f}%" if x['Litros Procesados Num'] > 0 else "0.00%", axis=1)
         
-        st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']], use_container_width=True, hide_index=True)
+        st.dataframe(df_p_show[['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote', 'Ratio Sólidos / Muzzarella']], use_container_width=True, hide_index=True)
         
-        headers_pdf_c = [("Fecha", 20), ("Lote", 30), ("Producto", 60), ("Litros", 25), ("Prod.", 25), ("Rend.", 20)]
+        headers_pdf_c = [("Fecha", 20), ("Lote", 25), ("Producto", 45), ("Litros", 20), ("Prod.", 20), ("Rend.", 15), ("Ratio Sól.", 15)]
         mapeo_pdf_c = [
             lambda r: r.Fecha if pd.notna(r.Fecha) else "",
             lambda r: str(r.Lote),
             lambda r: str(r.Producto),
             lambda r: str(r.Litros_Procesados),
             lambda r: str(r.Producto_Terminado),
-            lambda r: str(r.Rendimiento_Lote)
+            lambda r: str(r.Rendimiento_Lote),
+            lambda r: str(getattr(r, 'Ratio_Solidos_Muzzarella', 'S/D'))
         ]
         
         mes_nombre_pdf = MESES_ES.get(f_mes_p, str(f_mes_p)) if f_mes_p != "Todos" else "Todos los meses"
@@ -1265,7 +1299,12 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
             f"Ratio Litros Ingresados / Producto Terminado: {ratio_ing_c:.2f}%"
         ]
         
-        df_pdf_prep = df_p_show.rename(columns={"Litros Procesados": "Litros_Procesados", "Producto Terminado": "Producto_Terminado", "Rendimiento Lote": "Rendimiento_Lote"})
+        df_pdf_prep = df_p_show.rename(columns={
+            "Litros Procesados": "Litros_Procesados", 
+            "Producto Terminado": "Producto_Terminado", 
+            "Rendimiento Lote": "Rendimiento_Lote",
+            "Ratio Sólidos / Muzzarella": "Ratio_Solidos_Muzzarella"
+        })
         pdf_coop_bytes = generar_pdf_base("Reporte de Producción y Rendimiento - Coopagro", subtitulo_periodo, metricas_pdf_coop, headers_pdf_c, df_pdf_prep, mapeo_pdf_c)
         
         prefijo_nombre = f"{f_mes_p}- " if f_mes_p != "Todos" else "General - "
