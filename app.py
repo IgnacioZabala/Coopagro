@@ -769,7 +769,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                       
                   barra_progreso.progress((i + 1) / len(tambos_activos))
               
-              estado_texto.success(f"¡Proceso finalizado! ✅ {enviados} enviados | ❌ {errores} errores | ⚠️ {omitidos} sin mail configurado.")
+              estado_texto.success(f"¡Proceso finalizado! ✅ {enviados} enviados | ❌ {errores} errores | ⚠️️ {omitidos} sin mail configurado.")
 
   except Exception as e:
     st.error("Error en el Módulo Coopagro:")
@@ -949,7 +949,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
-          df_bac_m["_id_str"] = df_bac_m["_id_str"].sort_values()
           df_bac_m["lab_index"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
           
           map_cols_bac = {}
@@ -1002,7 +1001,35 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_c_raw = df_filtrado.copy()
       df_c_raw["PT_Total"] = df_c_raw["Producto Terminado"] + df_c_raw["PNC"]
       df_c_raw["Ratio"] = df_c_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
-      df_consolidado = df_c_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio": "Ratio de Conversión (%)"})
+      
+      # Cruzar con recepción MHSA (desfase de 1 día: producción de hoy usa leche recibida ayer)
+      if not df_mhsa.empty and {"Grasa", "Proteina", "Litros_Ticket"}.issubset(df_mhsa.columns):
+          df_mhsa_calc = df_mhsa.copy()
+          df_mhsa_calc["Kg_Grasa"] = df_mhsa_calc["Litros_Ticket"] * (df_mhsa_calc["Grasa"] / 100)
+          df_mhsa_calc["Kg_Proteina"] = df_mhsa_calc["Litros_Ticket"] * (df_mhsa_calc["Proteina"] / 100)
+          
+          df_rec_agg = df_mhsa_calc.groupby("Fecha").agg({
+              "Litros_Ticket": "sum",
+              "Kg_Grasa": "sum",
+              "Kg_Proteina": "sum"
+          }).reset_index()
+          
+          df_rec_agg["% Solidos Ponderados"] = (df_rec_agg["Kg_Grasa"] + df_rec_agg["Kg_Proteina"]) / df_rec_agg["Litros_Ticket"] * 100
+          df_rec_agg["Fecha_Produccion_Asociada"] = df_rec_agg["Fecha"] + pd.Timedelta(days=1)
+          
+          df_c_raw['Fecha_Dt'] = df_c_raw['Fecha']
+          df_c_raw = pd.merge(df_c_raw, df_rec_agg[['Fecha_Produccion_Asociada', '% Solidos Ponderados']], 
+                               left_on='Fecha_Dt', right_on='Fecha_Produccion_Asociada', how='left')
+          
+          df_c_raw['Kg Solidos en Tina'] = df_c_raw['Litros Procesados'] * (df_c_raw['% Solidos Ponderados'] / 100)
+          df_c_raw['Ratio Sólidos / Muzzarella'] = df_c_raw.apply(
+              lambda x: f"{x['PT_Total'] / x['Kg Solidos en Tina']:.2f}" if pd.notna(x['Kg Solidos en Tina']) and x['Kg Solidos en Tina'] > 0 else "S/D",
+              axis=1
+          )
+      else:
+          df_c_raw['Ratio Sólidos / Muzzarella'] = "S/D"
+
+      df_consolidado = df_c_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio", "Ratio Sólidos / Muzzarella"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio": "Ratio de Conversión (%)"})
 
     total_litros_ingresados = df_mhsa_f["Litros_Ticket"].sum() if not df_mhsa_f.empty else 0.0
     total_litros_proc = df_filtrado["Litros Procesados"].sum() if len(df_filtrado) > 0 else 0
@@ -1112,20 +1139,22 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_c_disp["Producto Terminado"] = df_c_disp["Producto Terminado"].apply(formato_miles)
             st.dataframe(df_c_disp, use_container_width=True, hide_index=True)
             
-            headers_pdf = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Ratio", 15)]
+            headers_pdf = [("Fecha", 25), ("Lote", 30), ("Producto", 55), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Ratio Conv.", 15), ("Ratio Sól.", 15)]
             mapeo_pdf = [
                 lambda r: r.Fecha if pd.notna(r.Fecha) else "",
                 lambda r: str(r.Lote),
                 lambda r: str(r.Producto),
                 lambda r: str(r.Litros_Procesados),
                 lambda r: str(r.Producto_Terminado),
-                lambda r: str(r.Ratio_Conversion)
+                lambda r: str(r.Ratio_Conversion),
+                lambda r: str(getattr(r, 'Ratio_Solidos_Muzzarella', 'S/D'))
             ]
 
             df_consolidado_pdf = df_c_disp.rename(columns={
                 "Litros Procesados": "Litros_Procesados",
                 "Producto Terminado": "Producto_Terminado",
                 "Ratio de Conversión (%)": "Ratio_Conversion",
+                "Ratio Sólidos / Muzzarella": "Ratio_Solidos_Muzzarella"
             })
 
             ratio_ingresados = (total_prod_consolidado / total_litros_ingresados * 100) if total_litros_ingresados > 0 else 0
@@ -1235,7 +1264,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         df_p_show['Litros Procesados Num'] = df_p_show['Litros Procesados']
         df_p_show['PT_Total_Lote'] = df_p_show['Producto Terminado'] + df_p_show['PNC']
         
-        # Incorporar análisis de laboratorio con desfase de 1 día (Leche recibida el día anterior)
         _, _, df_lab_raw, _ = cargar_datos_coopagro(URL_REMITOS, URL_MILKO, URL_BACSOMATIC)
         
         if not df_lab_raw.empty:
@@ -1253,7 +1281,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
                 df_solidos = df_lab.groupby('Fecha_Recepcion')[cols_agrupar].mean().reset_index()
                 df_solidos['Solidos_Utiles_Pct'] = df_solidos[cols_agrupar].sum(axis=1)
                 
-                # Desfase: Producción de hoy usa la leche recibida ayer (Fecha_Produccion = Fecha_Recepcion + 1 día)
                 df_solidos['Fecha_Produccion_Asociada'] = df_solidos['Fecha_Recepcion'] + pd.Timedelta(days=1)
                 
                 df_p_show = pd.merge(df_p_show, df_solidos[['Fecha_Produccion_Asociada', 'Solidos_Utiles_Pct']], 
