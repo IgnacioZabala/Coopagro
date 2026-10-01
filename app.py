@@ -949,6 +949,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
+          df_bac_m = df_bac_m.sort_values(by=["_id_str"])
           df_bac_m["lab_index"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
           
           map_cols_bac = {}
@@ -986,6 +987,9 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
     filtro_anio = st.sidebar.selectbox("Año", opciones_anio, index=opciones_anio.index(now.year) if now.year in opciones_anio else 0, key="m_anio_mastellone")
     filtro_mes = st.sidebar.selectbox("Mes", ["Todos"] + list(range(1, 13)), index=now.month, key="m_mes_mastellone")
 
+    # NUEVO: Checkbox para controlar la vista de sólidos en Mastellone
+    ver_solidos_m = st.sidebar.checkbox("Ver Ratio de Sólidos y Conversión", value=True, key="chk_solidos_mast")
+
     df_filtrado = df_mastellone_prod.copy()
     if len(df_filtrado) > 0:
       if filtro_anio != "Todos": df_filtrado = df_filtrado[df_filtrado["Año"] == filtro_anio]
@@ -1001,35 +1005,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_c_raw = df_filtrado.copy()
       df_c_raw["PT_Total"] = df_c_raw["Producto Terminado"] + df_c_raw["PNC"]
       df_c_raw["Ratio"] = df_c_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
-      
-      # Cruzar con recepción MHSA (desfase de 1 día: producción de hoy usa leche recibida ayer)
-      if not df_mhsa.empty and {"Grasa", "Proteina", "Litros_Ticket"}.issubset(df_mhsa.columns):
-          df_mhsa_calc = df_mhsa.copy()
-          df_mhsa_calc["Kg_Grasa"] = df_mhsa_calc["Litros_Ticket"] * (df_mhsa_calc["Grasa"] / 100)
-          df_mhsa_calc["Kg_Proteina"] = df_mhsa_calc["Litros_Ticket"] * (df_mhsa_calc["Proteina"] / 100)
-          
-          df_rec_agg = df_mhsa_calc.groupby("Fecha").agg({
-              "Litros_Ticket": "sum",
-              "Kg_Grasa": "sum",
-              "Kg_Proteina": "sum"
-          }).reset_index()
-          
-          df_rec_agg["% Solidos Ponderados"] = (df_rec_agg["Kg_Grasa"] + df_rec_agg["Kg_Proteina"]) / df_rec_agg["Litros_Ticket"] * 100
-          df_rec_agg["Fecha_Produccion_Asociada"] = df_rec_agg["Fecha"] + pd.Timedelta(days=1)
-          
-          df_c_raw['Fecha_Dt'] = df_c_raw['Fecha']
-          df_c_raw = pd.merge(df_c_raw, df_rec_agg[['Fecha_Produccion_Asociada', '% Solidos Ponderados']], 
-                               left_on='Fecha_Dt', right_on='Fecha_Produccion_Asociada', how='left')
-          
-          df_c_raw['Kg Solidos en Tina'] = df_c_raw['Litros Procesados'] * (df_c_raw['% Solidos Ponderados'] / 100)
-          df_c_raw['Ratio Sólidos / Muzzarella'] = df_c_raw.apply(
-              lambda x: f"{x['PT_Total'] / x['Kg Solidos en Tina']:.2f}" if pd.notna(x['Kg Solidos en Tina']) and x['Kg Solidos en Tina'] > 0 else "S/D",
-              axis=1
-          )
-      else:
-          df_c_raw['Ratio Sólidos / Muzzarella'] = "S/D"
-
-      df_consolidado = df_c_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio", "Ratio Sólidos / Muzzarella"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio": "Ratio de Conversión (%)"})
+      df_consolidado = df_c_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio": "Ratio de Conversión (%)"})
 
     total_litros_ingresados = df_mhsa_f["Litros_Ticket"].sum() if not df_mhsa_f.empty else 0.0
     total_litros_proc = df_filtrado["Litros Procesados"].sum() if len(df_filtrado) > 0 else 0
@@ -1054,6 +1030,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
             df_m_disp["Temperatura"] = df_m_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
+            # Formateo in situ para no perder el formato porcentual en el PDF
             if "Grasa" in df_m_disp: df_m_disp["Grasa"] = df_m_disp["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Proteina" in df_m_disp: df_m_disp["Proteina"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Crioscopia" in df_m_disp: df_m_disp["Crioscopia"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
@@ -1061,6 +1038,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "UFC" in df_m_disp: df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC" in df_m_disp: df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
+            # Renombres solo para la interfaz visual
             df_m_disp_visual = df_m_disp.rename(columns={
                 "Num_Tambo": "Num Tambo",
                 "Proteina": "Proteína",
@@ -1087,6 +1065,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             st.dataframe(df_style, use_container_width=True, hide_index=True)
 
             st.markdown("---")
+            # Preparación exclusiva para PDF
             df_pdf_rec = df_m_disp.copy()
             if "UFC" in df_pdf_rec.columns: 
                 df_pdf_rec = df_pdf_rec.drop(columns=["UFC"])
@@ -1134,27 +1113,80 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
         st.subheader("Registro de Lotes Fasón (Mastellone - Código 840)")
         if not df_consolidado.empty:
             df_c_disp = df_consolidado.copy()
-            df_c_disp["Fecha"] = df_c_disp["Fecha"].dt.strftime("%d/%m/%Y")
-            df_c_disp["Litros Procesados"] = df_c_disp["Litros Procesados"].apply(formato_miles)
-            df_c_disp["Producto Terminado"] = df_c_disp["Producto Terminado"].apply(formato_miles)
-            st.dataframe(df_c_disp, use_container_width=True, hide_index=True)
             
-            headers_pdf = [("Fecha", 25), ("Lote", 30), ("Producto", 55), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Ratio Conv.", 15), ("Ratio Sól.", 15)]
+            # --- INICIO LÓGICA DE SÓLIDOS Y CONVERSIÓN ---
+            df_c_disp['Fecha_Dt'] = df_c_disp['Fecha']
+            df_c_disp['Fecha'] = df_c_disp['Fecha_Dt'].dt.strftime('%d/%m/%Y')
+            
+            df_c_disp['Litros Procesados Num'] = df_c_disp['Litros Procesados']
+            df_c_disp['PT_Total_Lote'] = df_c_disp['Producto Terminado']
+            
+            _, _, df_lab_raw, _ = cargar_datos_coopagro(URL_REMITOS, URL_MILKO, URL_BACSOMATIC)
+            
+            if not df_lab_raw.empty:
+                df_lab = df_lab_raw.copy()
+                col_date = next((c for c in df_lab.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), df_lab.columns[0])
+                col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
+                col_prot = next((c for c in df_lab.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
+                
+                df_lab['Fecha_Recepcion'] = pd.to_datetime(df_lab[col_date], errors='coerce').dt.normalize()
+                df_lab[col_fat] = pd.to_numeric(df_lab[col_fat].astype(str).str.replace(",", "."), errors="coerce")
+                df_lab[col_prot] = pd.to_numeric(df_lab[col_prot].astype(str).str.replace(",", "."), errors="coerce")
+                
+                df_solidos = df_lab.groupby('Fecha_Recepcion')[[col_fat, col_prot]].mean().reset_index()
+                df_solidos['Solidos_Utiles'] = df_solidos[col_fat] + df_solidos[col_prot]
+                
+                df_solidos['Fecha_Produccion_Asociada'] = df_solidos['Fecha_Recepcion'] + pd.Timedelta(days=1)
+                
+                df_c_disp = pd.merge(df_c_disp, df_solidos[['Fecha_Produccion_Asociada', 'Solidos_Utiles']], 
+                                     left_on='Fecha_Dt', right_on='Fecha_Produccion_Asociada', how='left')
+                
+                df_c_disp['Kg Solidos en Tina'] = df_c_disp['Litros Procesados Num'] * (df_c_disp['Solidos_Utiles'] / 100)
+                df_c_disp['Tasa de Conversión'] = df_c_disp.apply(
+                    lambda x: x['PT_Total_Lote'] / x['Kg Solidos en Tina'] if pd.notna(x['Kg Solidos en Tina']) and x['Kg Solidos en Tina'] > 0 else pd.NA, 
+                    axis=1
+                )
+                
+                df_c_disp['% Sólidos (Día -1)'] = df_c_disp['Solidos_Utiles'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "S/D")
+                df_c_disp['Conversión (Kg/Kg)'] = df_c_disp['Tasa de Conversión'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "S/D")
+            else:
+                df_c_disp['% Sólidos (Día -1)'] = "S/D"
+                df_c_disp['Conversión (Kg/Kg)'] = "S/D"
+            # --- FIN LÓGICA DE SÓLIDOS Y CONVERSIÓN ---
+            
+            df_c_disp["Litros Procesados"] = df_c_disp["Litros Procesados Num"].apply(formato_miles)
+            df_c_disp["Producto Terminado"] = df_c_disp["PT_Total_Lote"].apply(formato_miles)
+            
+            # NUEVO: Armado condicional de columnas para la tabla web
+            cols_visuales_m = ["Fecha", "Lote", "Producto", "Litros Procesados", "Producto Terminado", "Ratio de Conversión (%)"]
+            if ver_solidos_m:
+                cols_visuales_m.extend(['% Sólidos (Día -1)', 'Conversión (Kg/Kg)'])
+
+            st.dataframe(df_c_disp[cols_visuales_m], use_container_width=True, hide_index=True)
+            
+            # NUEVO: Columnas base del PDF
+            headers_pdf = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Ratio", 15)]
             mapeo_pdf = [
                 lambda r: r.Fecha if pd.notna(r.Fecha) else "",
                 lambda r: str(r.Lote),
                 lambda r: str(r.Producto),
                 lambda r: str(r.Litros_Procesados),
                 lambda r: str(r.Producto_Terminado),
-                lambda r: str(r.Ratio_Conversion),
-                lambda r: str(getattr(r, 'Ratio_Solidos_Muzzarella', 'S/D'))
+                lambda r: str(r.Ratio_Conversion)
             ]
+
+            # NUEVO: Se agregan las columnas de sólidos y conversión si están marcadas
+            if ver_solidos_m:
+                headers_pdf = [("Fecha", 20), ("Lote", 25), ("Producto", 45), ("Litros", 20), ("Prod.", 20), ("Ratio", 15), ("Sólidos", 15), ("Conv.", 15)]
+                mapeo_pdf.extend([
+                    lambda r: str(getattr(r, '% Sólidos (Día -1)', 'S/D')),
+                    lambda r: str(getattr(r, 'Conversión (Kg/Kg)', 'S/D'))
+                ])
 
             df_consolidado_pdf = df_c_disp.rename(columns={
                 "Litros Procesados": "Litros_Procesados",
                 "Producto Terminado": "Producto_Terminado",
                 "Ratio de Conversión (%)": "Ratio_Conversion",
-                "Ratio Sólidos / Muzzarella": "Ratio_Solidos_Muzzarella"
             })
 
             ratio_ingresados = (total_prod_consolidado / total_litros_ingresados * 100) if total_litros_ingresados > 0 else 0
