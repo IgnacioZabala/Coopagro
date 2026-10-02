@@ -649,44 +649,93 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     elif vista_coop == "Gestión y Reportes por Tambo":
       st.header("📄 Reportes por Tambo")
       tipo_reporte_opcion = st.sidebar.radio("Período de Reporte:", ["Semanal", "Mensual"])
-      mapeo_tambos = df[["Tambo", "Num_Tambo"]].drop_duplicates().sort_values("Tambo")
       
-      if not mapeo_tambos.empty:
-        t_nombre = st.sidebar.selectbox("1. Seleccione Tambo:", mapeo_tambos["Tambo"].tolist())
-        t_id = mapeo_tambos.loc[mapeo_tambos["Tambo"] == t_nombre, "Num_Tambo"].values[0]
-        df_t = df[df["Num_Tambo"] == str(t_id)]
+      # 1. Selección de periodo GLOBALMENTE primero para permitir descargar TODOS
+      if tipo_reporte_opcion == "Semanal":
+        ciclos = df[["Fecha_Cierre_Viernes", "Ciclo_Semana"]].drop_duplicates().sort_values("Fecha_Cierre_Viernes", ascending=False)["Ciclo_Semana"].tolist()
+        periodo_sel = st.sidebar.selectbox("1. Seleccione Semana:", ciclos) if ciclos else ""
+        df_periodo = df[df["Ciclo_Semana"] == periodo_sel].sort_values(["Fecha", "N_Remito"]) if ciclos else pd.DataFrame()
+        es_mensual = False
+      else:
+        meses = sorted(df["AnioMes"].unique(), reverse=True)
+        periodo_sel = st.sidebar.selectbox("1. Seleccione Mes:", meses, format_func=lambda p: f"{MESES_ES.get(p.month)} {p.year}") if meses else None
+        df_periodo = df[df["AnioMes"] == periodo_sel].sort_values(["Fecha", "N_Remito"]) if meses else pd.DataFrame()
+        es_mensual = True
+      
+      st.sidebar.subheader("⚙️ Elementos del Reporte")
+      v_temp = st.sidebar.checkbox("Temperatura", True)
+      v_grasa = st.sidebar.checkbox("Grasa", True)
+      v_prot = st.sidebar.checkbox("Proteína", True)
+      v_crios = st.sidebar.checkbox("Crioscopia", True)
+      v_ufc = st.sidebar.checkbox("UFC <200", True)
+      v_scc = st.sidebar.checkbox("SCC <400", True)
+      args_vis = {"temp": v_temp, "grasa": v_grasa, "prot": v_prot, "crios": v_crios, "ufc": v_ufc, "scc": v_scc}
 
-        if tipo_reporte_opcion == "Semanal":
-          ciclos = df_t[["Fecha_Cierre_Viernes", "Ciclo_Semana"]].drop_duplicates().sort_values("Fecha_Cierre_Viernes", ascending=False)["Ciclo_Semana"].tolist()
-          ciclo_sel = st.sidebar.selectbox("2. Cierre de Semana:", ciclos) if ciclos else ""
-          df_per = df_t[df_t["Ciclo_Semana"] == ciclo_sel].sort_values(["Fecha", "N_Remito"]) if ciclos else pd.DataFrame()
-          es_mensual = False
-          periodo_pdf = f"{df_per['Fecha_Inicio_Sabado'].iloc[0]:%d/%m/%Y} al {df_per['Fecha_Cierre_Viernes'].iloc[0]:%d/%m/%Y}" if not df_per.empty else ""
-        else:
-          meses = sorted(df_t["AnioMes"].unique(), reverse=True)
-          mes_sel = st.sidebar.selectbox("2. Mes:", meses, format_func=lambda p: f"{MESES_ES.get(p.month)} {p.year}") if meses else None
-          df_per = df_t[df_t["AnioMes"] == mes_sel].sort_values(["Fecha", "N_Remito"]) if mes_sel else pd.DataFrame()
-          es_mensual = True
-          periodo_pdf = f"{MESES_ES.get(mes_sel.month)} {mes_sel.year}" if mes_sel else ""
-
-        st.sidebar.subheader("⚙️ Elementos del Reporte")
-        v_temp = st.sidebar.checkbox("Temperatura", True)
-        v_grasa = st.sidebar.checkbox("Grasa", True)
-        v_prot = st.sidebar.checkbox("Proteína", True)
-        v_crios = st.sidebar.checkbox("Crioscopia", True)
-        v_ufc = st.sidebar.checkbox("UFC <200", True)
-        v_scc = st.sidebar.checkbox("SCC <400", True)
-        args_vis = {"temp": v_temp, "grasa": v_grasa, "prot": v_prot, "crios": v_crios, "ufc": v_ufc, "scc": v_scc}
+      if not df_periodo.empty:
+        # --- NUEVA FUNCIONALIDAD: DESCARGA MASIVA ---
+        st.subheader("📦 Descarga Masiva")
+        st.info(f"Se encontraron movimientos para **{df_periodo['Num_Tambo'].nunique()} tambos** en el período seleccionado.")
+        
+        if st.button("Generar ZIP con Todos los Reportes"):
+          with st.spinner("Generando PDFs y comprimiendo en ZIP..."):
+            import io
+            import zipfile
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+              for t_id in df_periodo["Num_Tambo"].unique():
+                df_t_loop = df_periodo[df_periodo["Num_Tambo"] == t_id]
+                if df_t_loop.empty: continue
+                t_nom_loop = df_t_loop["Tambo"].iloc[0]
+                
+                # Ajuste en los nombres de archivo
+                if es_mensual:
+                  periodo_str_pdf = f"{MESES_ES.get(periodo_sel.month)} {periodo_sel.year}"
+                  nom_arch = f"Reporte mensual {t_nom_loop} - {periodo_str_pdf}.pdf"
+                else:
+                  f_ini = df_t_loop['Fecha_Inicio_Sabado'].iloc[0]
+                  f_fin = df_t_loop['Fecha_Cierre_Viernes'].iloc[0]
+                  periodo_str_pdf = f"{f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y}"
+                  # Usamos guiones en lugar de barras para evitar errores del sistema de archivos al descargar
+                  nom_arch = f"Reporte semanal {t_nom_loop} - Semana {f_ini:%d-%m} al {f_fin:%d-%m}.pdf" 
+                  
+                pdf_bytes_loop = generar_pdf_bytes(df_t_loop, t_nom_loop, t_id, periodo_str_pdf, args_vis, es_mensual)
+                zip_file.writestr(nom_arch, pdf_bytes_loop)
+                
+            st.download_button(
+                label="📥 Descargar Archivo ZIP",
+                data=zip_buffer.getvalue(),
+                file_name=f"Reportes_{'Mensuales' if es_mensual else 'Semanales'}.zip",
+                mime="application/zip",
+                type="primary"
+            )
+            
+        st.markdown("---")
+        
+        # --- VISTA INDIVIDUAL ---
+        st.subheader("📄 Vista y Descarga Individual")
+        mapeo_tambos_activos = df_periodo[["Tambo", "Num_Tambo"]].drop_duplicates().sort_values("Tambo")
+        t_nombre = st.sidebar.selectbox("2. Seleccione Tambo (Vista Individual):", mapeo_tambos_activos["Tambo"].tolist())
+        t_id = mapeo_tambos_activos.loc[mapeo_tambos_activos["Tambo"] == t_nombre, "Num_Tambo"].values[0]
+        df_per = df_periodo[df_periodo["Num_Tambo"] == str(t_id)]
 
         if not df_per.empty:
+          # Nombres de archivos también actualizados para la descarga individual
+          if es_mensual:
+            periodo_pdf = f"{MESES_ES.get(periodo_sel.month)} {periodo_sel.year}"
+            nom_arch = f"Reporte mensual {t_nombre} - {periodo_pdf}.pdf"
+          else:
+            f_ini = df_per['Fecha_Inicio_Sabado'].iloc[0]
+            f_fin = df_per['Fecha_Cierre_Viernes'].iloc[0]
+            periodo_pdf = f"{f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y}"
+            nom_arch = f"Reporte semanal {t_nombre} - Semana {f_ini:%d-%m} al {f_fin:%d-%m}.pdf"
+
           info_c = df_contactos[df_contactos["Num_Tambo"] == str(t_id)]
           email_t = info_c["Email"].values[0] if not info_c.empty and pd.notna(info_c["Email"].values[0]) else ""
           nom_c = info_c["Contacto_Nombre"].values[0] if not info_c.empty and pd.notna(info_c["Contacto_Nombre"].values[0]) else "Productor"
           
-          st.subheader(f"Resumen {'Mensual' if es_mensual else 'Semanal'} - {t_nombre} (#{t_id})")
+          st.markdown(f"**Resumen {'Mensual' if es_mensual else 'Semanal'} - {t_nombre} (#{t_id})**")
           
           pdf_b = generar_pdf_bytes(df_per, t_nombre, t_id, periodo_pdf, args_vis, es_mensual)
-          nom_arch = f"Resumen_{'Mensual' if es_mensual else 'Semanal'}_{t_nombre.replace(' ', '_')}.pdf"
 
           b1, b2 = st.columns(2)
           b1.download_button("📥 Descargar PDF", data=pdf_b, file_name=nom_arch, mime="application/pdf", use_container_width=True)
@@ -769,12 +818,11 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                       
                   barra_progreso.progress((i + 1) / len(tambos_activos))
               
-              estado_texto.success(f"¡Proceso finalizado! ✅ {enviados} enviados | ❌ {errores} errores | ⚠️️ {omitidos} sin mail configurado.")
+              estado_texto.success(f"¡Proceso finalizado! ✅ {enviados} enviados | ❌ {errores} errores | ⚠ {omitidos} sin mail configurado.")
 
   except Exception as e:
     st.error("Error en el Módulo Coopagro:")
     st.code(traceback.format_exc())
-
 # =========================================================================
 # MÓDULO 2: RECEPCIÓN Y CALIDAD MASTELLONE (FASÓN)
 # =========================================================================
