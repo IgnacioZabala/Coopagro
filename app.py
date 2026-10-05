@@ -397,7 +397,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         
     df["Tambo"] = df["Tambo"].replace("#REF!", "Desconocido")
 
-    # Eliminamos la lógica de lab_index para evitar falsos emparejamientos
     df = df.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
 
     if not df_lab_raw.empty:
@@ -410,17 +409,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_lab["Fecha"] = df_lab["Fecha_Extraida"].fillna(pd.to_datetime(df_lab[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
       df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
       
-      # LÓGICA CORREGIDA: Ordenamos por fecha de análisis DESCENDENTE para quedarnos con el último test (re-test)
-      if col_date:
-          df_lab["_sort_time"] = pd.to_datetime(df_lab[col_date], errors="coerce")
-          df_lab = df_lab.sort_values(by=["Num_Tambo", "Fecha", "_sort_time"], ascending=[True, True, False])
-      else:
-          df_lab["_sample_str"] = df_lab[col_sample].astype(str)
-          df_lab = df_lab.sort_values(by=["Num_Tambo", "Fecha", "_sample_str"], ascending=[True, True, False])
-      
-      # Eliminamos duplicados diarios, conservando solo el test más reciente
-      df_lab = df_lab.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
-      
       map_cols = {}
       col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
       col_prot = next((c for c in df_lab.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
@@ -428,12 +416,28 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if col_fat: map_cols[col_fat] = "Grasa_Lab"
       if col_prot: map_cols[col_prot] = "Proteina_Lab"
       if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
+
+      for c_orig in map_cols.keys():
+          df_lab[c_orig] = pd.to_numeric(df_lab[c_orig].astype(str).str.replace(",", "."), errors="coerce")
+
+      # Filtro de seguridad: descarta lecturas erróneas con grasa menor a 1%
+      if col_fat:
+          df_lab = df_lab[df_lab[col_fat] > 1.0]
+
+      if col_date:
+          df_lab["_has_time"] = df_lab[col_sample].astype(str).str.contains(r"\d{2}:\d{2}", regex=True)
+          df_lab["_sort_time"] = pd.to_datetime(df_lab[col_date], errors="coerce")
+          df_lab = df_lab.sort_values(by=["Num_Tambo", "Fecha", "_has_time", "_sort_time"], ascending=[True, True, False, False])
+      else:
+          df_lab["_sample_str"] = df_lab[col_sample].astype(str)
+          df_lab = df_lab.sort_values(by=["Num_Tambo", "Fecha", "_sample_str"], ascending=[True, True, False])
+      
+      df_lab = df_lab.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
       
       if map_cols:
         df_milko_clean = df_lab[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
         for c in map_cols.values(): df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
-        # Merge directo por Fecha y Tambo (sin lab_index)
         df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
                     
         if "Grasa_Lab" in df: df["Grasa"] = df["Grasa_Lab"].combine_first(df["Grasa"])
@@ -450,7 +454,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_bac["Fecha"] = df_bac["Fecha_Extraida"].fillna(pd.to_datetime(df_bac[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
       df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
       
-      # Misma lógica para Bacsomatic: nos quedamos con el último test
       if col_date_bac:
           df_bac["_sort_time"] = pd.to_datetime(df_bac[col_date_bac], errors="coerce")
           df_bac = df_bac.sort_values(by=["Num_Tambo", "Fecha", "_sort_time"], ascending=[True, True, False])
@@ -470,7 +473,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         df_bac_clean = df_bac[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
         for c in map_cols_bac.values(): df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
-        # Merge directo por Fecha y Tambo
         df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
                     
         if "UFC_Val" in df: df["UFC"] = df["UFC_Val"].combine_first(df["UFC"])
@@ -648,7 +650,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       st.header("📄 Reportes por Tambo")
       tipo_reporte_opcion = st.sidebar.radio("Período de Reporte:", ["Semanal", "Mensual"])
       
-      # 1. Selección de periodo GLOBALMENTE primero para permitir descargar TODOS
       if tipo_reporte_opcion == "Semanal":
         ciclos = df[["Fecha_Cierre_Viernes", "Ciclo_Semana"]].drop_duplicates().sort_values("Fecha_Cierre_Viernes", ascending=False)["Ciclo_Semana"].tolist()
         periodo_sel = st.sidebar.selectbox("1. Seleccione Semana:", ciclos) if ciclos else ""
@@ -670,7 +671,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       args_vis = {"temp": v_temp, "grasa": v_grasa, "prot": v_prot, "crios": v_crios, "ufc": v_ufc, "scc": v_scc}
 
       if not df_periodo.empty:
-        # --- NUEVA FUNCIONALIDAD: DESCARGA MASIVA ---
         st.subheader("📦 Descarga Masiva")
         st.info(f"Se encontraron movimientos para **{df_periodo['Num_Tambo'].nunique()} tambos** en el período seleccionado.")
         
@@ -685,7 +685,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 if df_t_loop.empty: continue
                 t_nom_loop = df_t_loop["Tambo"].iloc[0]
                 
-                # Ajuste en los nombres de archivo
                 if es_mensual:
                   periodo_str_pdf = f"{MESES_ES.get(periodo_sel.month)} {periodo_sel.year}"
                   nom_arch = f"Reporte mensual {t_nom_loop} - {periodo_str_pdf}.pdf"
@@ -693,7 +692,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                   f_ini = df_t_loop['Fecha_Inicio_Sabado'].iloc[0]
                   f_fin = df_t_loop['Fecha_Cierre_Viernes'].iloc[0]
                   periodo_str_pdf = f"{f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y}"
-                  # Usamos guiones en lugar de barras para evitar errores del sistema de archivos al descargar
                   nom_arch = f"Reporte semanal {t_nom_loop} - Semana {f_ini:%d-%m} al {f_fin:%d-%m}.pdf" 
                   
                 pdf_bytes_loop = generar_pdf_bytes(df_t_loop, t_nom_loop, t_id, periodo_str_pdf, args_vis, es_mensual)
@@ -709,7 +707,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
             
         st.markdown("---")
         
-        # --- VISTA INDIVIDUAL ---
         st.subheader("📄 Vista y Descarga Individual")
         mapeo_tambos_activos = df_periodo[["Tambo", "Num_Tambo"]].drop_duplicates().sort_values("Tambo")
         t_nombre = st.sidebar.selectbox("2. Seleccione Tambo (Vista Individual):", mapeo_tambos_activos["Tambo"].tolist())
@@ -717,7 +714,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         df_per = df_periodo[df_periodo["Num_Tambo"] == str(t_id)]
 
         if not df_per.empty:
-          # Nombres de archivos también actualizados para la descarga individual
           if es_mensual:
             periodo_pdf = f"{MESES_ES.get(periodo_sel.month)} {periodo_sel.year}"
             nom_arch = f"Reporte mensual {t_nombre} - {periodo_pdf}.pdf"
