@@ -427,14 +427,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         for c in map_cols.values(): df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
         df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
-        for offset in [1, 2, 3]:
-            df_fall = df[["Num_Tambo", "Fecha", "lab_index"]].copy()
-            df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
-            df_lab_offset = df_milko_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-            df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada", "lab_index"], how="left")
-            for c in map_cols.values():
-                if c in df.columns and c in df_fall.columns:
-                    df[c] = df[c].combine_first(df_fall[c])
                     
         if "Grasa_Lab" in df: df["Grasa"] = df["Grasa_Lab"].combine_first(df["Grasa"])
         if "Proteina_Lab" in df: df["Proteina"] = df["Proteina_Lab"].combine_first(df["Proteina"])
@@ -465,14 +457,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         for c in map_cols_bac.values(): df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
         df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
-        for offset in [1, 2, 3]:
-            df_fall = df[["Num_Tambo", "Fecha", "lab_index"]].copy()
-            df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
-            df_lab_offset = df_bac_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-            df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada", "lab_index"], how="left")
-            for c in map_cols_bac.values():
-                if c in df.columns and c in df_fall.columns:
-                    df[c] = df[c].combine_first(df_fall[c])
                     
         if "UFC_Val" in df: df["UFC"] = df["UFC_Val"].combine_first(df["UFC"])
         if "SCC_Val" in df: df["SCC"] = df["SCC_Val"].combine_first(df["SCC"])
@@ -823,6 +807,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
   except Exception as e:
     st.error("Error en el Módulo Coopagro:")
     st.code(traceback.format_exc())
+      
 # =========================================================================
 # MÓDULO 2: RECEPCIÓN Y CALIDAD MASTELLONE (FASÓN)
 # =========================================================================
@@ -972,14 +957,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
               
               df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
-              for offset in [1, 2, 3]:
-                  df_fall = df_mhsa[["Num_Tambo", "Fecha", "lab_index"]].copy()
-                  df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
-                  df_lab_offset = df_milko_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-                  df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada", "lab_index"], how="left")
-                  for c in map_cols.values():
-                      if c in df_mhsa.columns and c in df_fall.columns:
-                          df_mhsa[c] = df_mhsa[c].combine_first(df_fall[c])
 
               if "Grasa_Lab" in df_mhsa: df_mhsa["Grasa"] = df_mhsa["Grasa_Lab"]
               if "Proteina_Lab" in df_mhsa: df_mhsa["Proteina"] = df_mhsa["Proteina_Lab"]
@@ -1012,14 +989,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
               
               df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
-              for offset in [1, 2, 3]:
-                  df_fall = df_mhsa[["Num_Tambo", "Fecha", "lab_index"]].copy()
-                  df_fall["Fecha_Buscada"] = df_fall["Fecha"] + pd.Timedelta(days=offset)
-                  df_lab_offset = df_bac_clean.rename(columns={"Fecha": "Fecha_Buscada"})
-                  df_fall = pd.merge(df_fall, df_lab_offset, on=["Num_Tambo", "Fecha_Buscada", "lab_index"], how="left")
-                  for c in map_cols_bac.values():
-                      if c in df_mhsa.columns and c in df_fall.columns:
-                          df_mhsa[c] = df_mhsa[c].combine_first(df_fall[c])
                       
               if "UFC_Val" in df_mhsa.columns: df_mhsa["UFC"] = df_mhsa["UFC_Val"]
               if "SCC_Val" in df_mhsa.columns: df_mhsa["SCC"] = df_mhsa["SCC_Val"]
