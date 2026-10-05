@@ -397,8 +397,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         
     df["Tambo"] = df["Tambo"].replace("#REF!", "Desconocido")
 
+    # Eliminamos la lógica de lab_index para evitar falsos emparejamientos
     df = df.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
-    df["lab_index"] = df.groupby(["Num_Tambo", "Fecha"]).cumcount()
 
     if not df_lab_raw.empty:
       df_lab = df_lab_raw.copy()
@@ -410,9 +410,16 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_lab["Fecha"] = df_lab["Fecha_Extraida"].fillna(pd.to_datetime(df_lab[col_date], errors="coerce").dt.normalize() if col_date else pd.NaT)
       df_lab = df_lab.dropna(subset=["Fecha", "Num_Tambo"])
       
-      df_lab["_sample_str"] = df_lab[col_sample].astype(str)
-      df_lab = df_lab.sort_values(by=["_sample_str"])
-      df_lab["lab_index"] = df_lab.groupby(["Num_Tambo", "Fecha"]).cumcount()
+      # LÓGICA CORREGIDA: Ordenamos por fecha de análisis DESCENDENTE para quedarnos con el último test (re-test)
+      if col_date:
+          df_lab["_sort_time"] = pd.to_datetime(df_lab[col_date], errors="coerce")
+          df_lab = df_lab.sort_values(by=["Num_Tambo", "Fecha", "_sort_time"], ascending=[True, True, False])
+      else:
+          df_lab["_sample_str"] = df_lab[col_sample].astype(str)
+          df_lab = df_lab.sort_values(by=["Num_Tambo", "Fecha", "_sample_str"], ascending=[True, True, False])
+      
+      # Eliminamos duplicados diarios, conservando solo el test más reciente
+      df_lab = df_lab.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
       
       map_cols = {}
       col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
@@ -423,10 +430,11 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
       
       if map_cols:
-        df_milko_clean = df_lab[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols.keys())].rename(columns=map_cols)
+        df_milko_clean = df_lab[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
         for c in map_cols.values(): df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
-        df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
+        # Merge directo por Fecha y Tambo (sin lab_index)
+        df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
                     
         if "Grasa_Lab" in df: df["Grasa"] = df["Grasa_Lab"].combine_first(df["Grasa"])
         if "Proteina_Lab" in df: df["Proteina"] = df["Proteina_Lab"].combine_first(df["Proteina"])
@@ -442,9 +450,15 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       df_bac["Fecha"] = df_bac["Fecha_Extraida"].fillna(pd.to_datetime(df_bac[col_date_bac], errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
       df_bac = df_bac.dropna(subset=["Fecha", "Num_Tambo"])
       
-      df_bac["_id_str"] = df_bac[col_id].astype(str)
-      df_bac = df_bac.sort_values(by=["_id_str"])
-      df_bac["lab_index"] = df_bac.groupby(["Num_Tambo", "Fecha"]).cumcount()
+      # Misma lógica para Bacsomatic: nos quedamos con el último test
+      if col_date_bac:
+          df_bac["_sort_time"] = pd.to_datetime(df_bac[col_date_bac], errors="coerce")
+          df_bac = df_bac.sort_values(by=["Num_Tambo", "Fecha", "_sort_time"], ascending=[True, True, False])
+      else:
+          df_bac["_sample_str"] = df_bac[col_id].astype(str)
+          df_bac = df_bac.sort_values(by=["Num_Tambo", "Fecha", "_sample_str"], ascending=[True, True, False])
+          
+      df_bac = df_bac.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
       
       map_cols_bac = {}
       col_ufc = next((c for c in df_bac.columns if "ufc" in c.lower()), None)
@@ -453,15 +467,15 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if col_scc: map_cols_bac[col_scc] = "SCC_Val"
       
       if map_cols_bac:
-        df_bac_clean = df_bac[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
+        df_bac_clean = df_bac[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
         for c in map_cols_bac.values(): df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
-        df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
+        # Merge directo por Fecha y Tambo
+        df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
                     
         if "UFC_Val" in df: df["UFC"] = df["UFC_Val"].combine_first(df["UFC"])
         if "SCC_Val" in df: df["SCC"] = df["SCC_Val"].combine_first(df["SCC"])
 
-    df = df.drop(columns=["lab_index"], errors="ignore")
     df["Fecha_Cierre_Viernes"] = df["Fecha"] + pd.to_timedelta((4 - df["Fecha"].dt.weekday) % 7, unit="D")
     df["Fecha_Inicio_Sabado"] = df["Fecha_Cierre_Viernes"] - pd.Timedelta(days=6)
     df["Ciclo_Semana"] = "Viernes " + df["Fecha_Cierre_Viernes"].dt.strftime("%d/%m/%Y") + " (Sáb " + df["Fecha_Inicio_Sabado"].dt.strftime("%d/%m/%Y") + " al Vie " + df["Fecha_Cierre_Viernes"].dt.strftime("%d/%m/%Y") + ")"
