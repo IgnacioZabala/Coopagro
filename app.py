@@ -397,7 +397,9 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         
     df["Tambo"] = df["Tambo"].replace("#REF!", "Desconocido")
 
+    # --- CORRECCIÓN 1: Agregamos lab_index a los remitos ---
     df = df.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
+    df["lab_index"] = df.groupby(["Num_Tambo", "Fecha"]).cumcount()
 
     if not df_lab_raw.empty:
       df_lab = df_lab_raw.copy()
@@ -432,13 +434,17 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           df_lab["_sample_str"] = df_lab[col_sample].astype(str)
           df_lab = df_lab.sort_values(by=["Num_Tambo", "Fecha", "_sample_str"], ascending=[True, True, False])
       
-      df_lab = df_lab.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      # --- CORRECCIÓN 2: Eliminamos drop_duplicates y creamos lab_index ---
+      # df_lab = df_lab.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      df_lab["lab_index"] = df_lab.groupby(["Num_Tambo", "Fecha"]).cumcount()
       
       if map_cols:
-        df_milko_clean = df_lab[["Num_Tambo", "Fecha"] + list(map_cols.keys())].rename(columns=map_cols)
+        # Agregamos lab_index
+        df_milko_clean = df_lab[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols.keys())].rename(columns=map_cols)
         for c in map_cols.values(): df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
-        df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha"], how="left")
+        # Merge usando lab_index
+        df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
                     
         if "Grasa_Lab" in df: df["Grasa"] = df["Grasa_Lab"].combine_first(df["Grasa"])
         if "Proteina_Lab" in df: df["Proteina"] = df["Proteina_Lab"].combine_first(df["Proteina"])
@@ -461,7 +467,9 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           df_bac["_sample_str"] = df_bac[col_id].astype(str)
           df_bac = df_bac.sort_values(by=["Num_Tambo", "Fecha", "_sample_str"], ascending=[True, True, False])
           
-      df_bac = df_bac.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      # --- CORRECCIÓN 3: Eliminamos drop_duplicates y creamos lab_index ---
+      # df_bac = df_bac.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
+      df_bac["lab_index"] = df_bac.groupby(["Num_Tambo", "Fecha"]).cumcount()
       
       map_cols_bac = {}
       col_ufc = next((c for c in df_bac.columns if "ufc" in c.lower()), None)
@@ -470,13 +478,18 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if col_scc: map_cols_bac[col_scc] = "SCC_Val"
       
       if map_cols_bac:
-        df_bac_clean = df_bac[["Num_Tambo", "Fecha"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
+        # Agregamos lab_index
+        df_bac_clean = df_bac[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
         for c in map_cols_bac.values(): df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
-        df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha"], how="left")
+        # Merge usando lab_index
+        df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
                     
         if "UFC_Val" in df: df["UFC"] = df["UFC_Val"].combine_first(df["UFC"])
         if "SCC_Val" in df: df["SCC"] = df["SCC_Val"].combine_first(df["SCC"])
+
+    # --- CORRECCIÓN 4: Eliminamos la columna auxiliar lab_index ---
+    df = df.drop(columns=["lab_index"], errors="ignore")
 
     df["Fecha_Cierre_Viernes"] = df["Fecha"] + pd.to_timedelta((4 - df["Fecha"].dt.weekday) % 7, unit="D")
     df["Fecha_Inicio_Sabado"] = df["Fecha_Cierre_Viernes"] - pd.Timedelta(days=6)
