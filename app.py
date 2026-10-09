@@ -1008,6 +1008,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
+          df_bac_m = df_bac_m.sort_values(by=["_id_str"])
           df_bac_m["lab_index"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
           
           map_cols_bac = {}
@@ -1075,7 +1076,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
         if not df_mhsa_f.empty:
             df_m_disp = df_mhsa_f.sort_values(by=["Fecha", "Num_Tambo"]).copy()
             
-            # CÁLCULO DE SÓLIDOS ÚTILES PARA MASTRELLONE
+            # CÁLCULO DE SÓLIDOS ÚTILES
             df_m_disp["Porcentaje_SU"] = df_m_disp["Grasa"].fillna(0) + df_m_disp["Proteina"].fillna(0)
             df_m_disp["Densidad_Calc"] = df_m_disp["Densidad"].fillna(1.030)
             df_m_disp["Uso_Estandar"] = df_m_disp["Densidad"].isna() | (df_m_disp["Densidad"] <= 0)
@@ -1092,8 +1093,12 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_m_disp["% Sólidos Útiles"] = df_m_disp["Porcentaje_SU"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) and x > 0 else "-")
             df_m_disp["Kg Sólidos Útiles"] = df_m_disp.apply(lambda r: formato_kg_arg(r["Kg_SU"], r["Uso_Estandar"]), axis=1)
 
-            if "UFC" in df_m_disp: df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
-            if "SCC" in df_m_disp: df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            # Guardamos numéricos puros para el resaltador de colores condicionales sin romper Pandas Styler
+            df_m_disp["UFC_num"] = pd.to_numeric(df_m_disp["UFC"], errors="coerce")
+            df_m_disp["SCC_num"] = pd.to_numeric(df_m_disp["SCC"], errors="coerce")
+
+            df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
             df_m_disp_visual = df_m_disp.rename(columns={
                 "Fecha_Str": "Fecha",
@@ -1106,28 +1111,23 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             for col_extra in ["Grasa", "Proteína", "% Sólidos Útiles", "Kg Sólidos Útiles", "Crioscopía", "UFC <200", "SCC <400"]:
                 if col_extra in df_m_disp_visual: cols.append(col_extra)
             
-            def highlight_bacsomatic(val, threshold):
-                try:
-                    if pd.notna(val) and str(val) != "-":
-                        num_val = float(str(val).replace(".", "").replace(",", "."))
-                        if num_val > threshold: return 'color: red; font-weight: bold'
-                except:
-                    pass
-                return ''
-                
+            def highlight_bacsomatic_col(col, threshold):
+                return [
+                    'color: red; font-weight: bold' if pd.notna(val) and val > threshold else ''
+                    for val in col
+                ]
+
             df_style = df_m_disp_visual[cols].style
-            if "UFC <200" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC <200"])
-            if "SCC <400" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC <400"])
+            if "UFC <200" in df_m_disp_visual.columns:
+                df_style = df_style.apply(lambda _: highlight_bacsomatic_col(df_m_disp["UFC_num"], 200), subset=["UFC <200"])
+            if "SCC <400" in df_m_disp_visual.columns:
+                df_style = df_style.apply(lambda _: highlight_bacsomatic_col(df_m_disp["SCC_num"], 400), subset=["SCC <400"])
             
             st.dataframe(df_style, use_container_width=True, hide_index=True)
             st.caption("* Indica uso de densidad estándar (1.030 kg/L).")
 
             st.markdown("---")
             df_pdf_rec = df_m_disp.copy()
-            if "UFC" in df_pdf_rec.columns: 
-                df_pdf_rec = df_pdf_rec.drop(columns=["UFC"])
-            if "SCC" in df_pdf_rec.columns: 
-                df_pdf_rec = df_pdf_rec.drop(columns=["SCC"])
             df_pdf_rec = df_pdf_rec.rename(columns={"UFC <200": "UFC", "SCC <400": "SCC"})
             
             headers_pdf_rec = [("Fecha", 20), ("Código", 16), ("Tambo", 30), ("Litros", 16), ("Temp", 12), ("Grasa", 14), ("Prot", 14), ("% SU", 14), ("Kg SU", 18), ("UFC", 18), ("SCC", 18)]
@@ -1141,8 +1141,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 lambda r: str(getattr(r, "Proteina", "-")),
                 lambda r: f"{r.Porcentaje_SU:.2f}%".replace(".", ",") if r.Porcentaje_SU > 0 else "-",
                 lambda r: formato_kg_arg(r.Kg_SU, r.Uso_Estandar, con_unidad=False),
-                lambda r: str(getattr(r, "UFC <200", "-")),
-                lambda r: str(getattr(r, "SCC <400", "-"))
+                lambda r: str(getattr(r, "UFC", "-")),
+                lambda r: str(getattr(r, "SCC", "-"))
             ]
             
             mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
