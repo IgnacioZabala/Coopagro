@@ -1081,13 +1081,13 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_m_disp["Uso_Estandar"] = df_m_disp["Densidad"].isna() | (df_m_disp["Densidad"] <= 0)
             df_m_disp["Kg_SU"] = df_m_disp["Litros_Ticket"] * df_m_disp["Densidad_Calc"] * (df_m_disp["Porcentaje_SU"] / 100)
 
-            df_m_disp["Fecha_Str"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
+            df_m_disp["Fecha"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
             df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
             df_m_disp["Temperatura"] = df_m_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
             if "Grasa" in df_m_disp: df_m_disp["Grasa"] = df_m_disp["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Proteina" in df_m_disp: df_m_disp["Proteina"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-            if "Crioscopia" in df_m_disp: df_m_disp["Crioscopia"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
+            if "Proteina" in df_m_disp: df_m_disp["Proteína"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            if "Crioscopia" in df_m_disp: df_m_disp["Crioscopía"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
             
             df_m_disp["% Sólidos Útiles"] = df_m_disp["Porcentaje_SU"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) and x > 0 else "-")
             df_m_disp["Kg Sólidos Útiles"] = df_m_disp.apply(lambda r: formato_kg_arg(r["Kg_SU"], r["Uso_Estandar"]), axis=1)
@@ -1095,18 +1095,12 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
-            df_m_disp_visual = df_m_disp.rename(columns={
-                "Fecha_Str": "Fecha",
-                "Num_Tambo": "Num Tambo",
-                "Proteina": "Proteína",
-                "Crioscopia": "Crioscopía"
-            })
+            df_m_disp = df_m_disp.rename(columns={"Num_Tambo": "Num Tambo"})
             
-            cols = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura"]
-            for col_extra in ["Grasa", "Proteína", "% Sólidos Útiles", "Kg Sólidos Útiles", "Crioscopía", "UFC <200", "SCC <400"]:
-                if col_extra in df_m_disp_visual: cols.append(col_extra)
+            cols_disponibles = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura", "Grasa", "Proteína", "% Sólidos Útiles", "Kg Sólidos Útiles", "Crioscopía", "UFC <200", "SCC <400"]
+            cols_finales = [c for c in cols_disponibles if c in df_m_disp.columns]
             
-            st.dataframe(df_m_disp_visual[cols], use_container_width=True, hide_index=True)
+            st.dataframe(df_m_disp[cols_finales], use_container_width=True, hide_index=True)
             st.caption("* Indica uso de densidad estándar (1.030 kg/L).")
 
             st.markdown("---")
@@ -1115,15 +1109,15 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             
             headers_pdf_rec = [("Fecha", 20), ("Código", 16), ("Tambo", 30), ("Litros", 16), ("Temp", 12), ("Grasa", 14), ("Prot", 14), ("% SU", 14), ("Kg SU", 18), ("UFC", 18), ("SCC", 18)]
             mapeo_pdf_rec = [
-                lambda r: r.Fecha_Str if pd.notna(r.Fecha_Str) else "",
-                lambda r: str(getattr(r, "Num_Tambo", "-")),
-                lambda r: str(r.Tambo)[:16],
-                lambda r: str(r.Litros),
+                lambda r: str(getattr(r, "Fecha", "")),
+                lambda r: str(getattr(r, "Num Tambo", "-")),
+                lambda r: str(getattr(r, "Tambo", "-"))[:16],
+                lambda r: str(getattr(r, "Litros", "0")),
                 lambda r: str(getattr(r, "Temperatura", "-")),
                 lambda r: str(getattr(r, "Grasa", "-")),
-                lambda r: str(getattr(r, "Proteina", "-")),
-                lambda r: f"{r.Porcentaje_SU:.2f}%".replace(".", ",") if r.Porcentaje_SU > 0 else "-",
-                lambda r: formato_kg_arg(r.Kg_SU, r.Uso_Estandar, con_unidad=False),
+                lambda r: str(getattr(r, "Proteína", "-")),
+                lambda r: str(getattr(r, "% Sólidos Útiles", "-")),
+                lambda r: str(getattr(r, "Kg Sólidos Útiles", "-")).replace(" kg", ""),
                 lambda r: str(getattr(r, "UFC", "-")),
                 lambda r: str(getattr(r, "SCC", "-"))
             ]
