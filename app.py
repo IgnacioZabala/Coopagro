@@ -1008,7 +1008,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
-          df_bac_m = df_bac_m.sort_values(by=["_id_str"])
           df_bac_m["lab_index"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
           
           map_cols_bac = {}
@@ -1093,10 +1092,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_m_disp["% Sólidos Útiles"] = df_m_disp["Porcentaje_SU"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) and x > 0 else "-")
             df_m_disp["Kg Sólidos Útiles"] = df_m_disp.apply(lambda r: formato_kg_arg(r["Kg_SU"], r["Uso_Estandar"]), axis=1)
 
-            # Guardamos numéricos puros para el resaltador de colores condicionales sin romper Pandas Styler
-            df_m_disp["UFC_num"] = pd.to_numeric(df_m_disp["UFC"], errors="coerce")
-            df_m_disp["SCC_num"] = pd.to_numeric(df_m_disp["SCC"], errors="coerce")
-
             df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
@@ -1111,19 +1106,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             for col_extra in ["Grasa", "Proteína", "% Sólidos Útiles", "Kg Sólidos Útiles", "Crioscopía", "UFC <200", "SCC <400"]:
                 if col_extra in df_m_disp_visual: cols.append(col_extra)
             
-            def highlight_bacsomatic_col(col, threshold):
-                return [
-                    'color: red; font-weight: bold' if pd.notna(val) and val > threshold else ''
-                    for val in col
-                ]
-
-            df_style = df_m_disp_visual[cols].style
-            if "UFC <200" in df_m_disp_visual.columns:
-                df_style = df_style.apply(lambda _: highlight_bacsomatic_col(df_m_disp["UFC_num"], 200), subset=["UFC <200"])
-            if "SCC <400" in df_m_disp_visual.columns:
-                df_style = df_style.apply(lambda _: highlight_bacsomatic_col(df_m_disp["SCC_num"], 400), subset=["SCC <400"])
-            
-            st.dataframe(df_style, use_container_width=True, hide_index=True)
+            st.dataframe(df_m_disp_visual[cols], use_container_width=True, hide_index=True)
             st.caption("* Indica uso de densidad estándar (1.030 kg/L).")
 
             st.markdown("---")
