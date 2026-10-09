@@ -977,9 +977,12 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           col_fat = next((c for c in df_lab_m.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
           col_prot = next((c for c in df_lab_m.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
           col_fp = next((c for c in df_lab_m.columns if "fp" in c.lower() or "crios" in c.lower()), None)
+          col_dens = next((c for c in df_lab_m.columns if "dens" in c.lower()), None)
+
           if col_fat: map_cols[col_fat] = "Grasa_Lab"
           if col_prot: map_cols[col_prot] = "Proteina_Lab"
           if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
+          if col_dens: map_cols[col_dens] = "Densidad_Lab"
           
           if map_cols:
               df_milko_clean = df_lab_m[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols.keys())].rename(columns=map_cols)
@@ -991,6 +994,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               if "Grasa_Lab" in df_mhsa: df_mhsa["Grasa"] = df_mhsa["Grasa_Lab"]
               if "Proteina_Lab" in df_mhsa: df_mhsa["Proteina"] = df_mhsa["Proteina_Lab"]
               if "Crioscopia_Lab" in df_mhsa: df_mhsa["Crioscopia"] = df_mhsa["Crioscopia_Lab"]
+              if "Densidad_Lab" in df_mhsa: df_mhsa["Densidad"] = df_mhsa["Densidad_Lab"]
 
       if not df_bac_raw.empty:
           df_bac_m = df_bac_raw.copy()
@@ -1004,7 +1008,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
           df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
           
           df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
-          df_bac_m = df_bac_m.sort_values(by=["_id_str"])
           df_bac_m["lab_index"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
           
           map_cols_bac = {}
@@ -1024,6 +1027,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               if "SCC_Val" in df_mhsa.columns: df_mhsa["SCC"] = df_mhsa["SCC_Val"]
 
       df_mhsa = df_mhsa.drop(columns=["lab_index"], errors="ignore")
+      df_mhsa["Densidad"] = df_mhsa.get("Densidad", pd.Series(dtype=float)).apply(norm_dens)
 
     st.sidebar.subheader("Filtros Mastellone")
     anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
@@ -1070,7 +1074,14 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
         st.subheader("Recepción y Calidad de Tambos Mastellone")
         if not df_mhsa_f.empty:
             df_m_disp = df_mhsa_f.sort_values(by=["Fecha", "Num_Tambo"]).copy()
-            df_m_disp["Fecha"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
+            
+            # CÁLCULO DE SÓLIDOS ÚTILES PARA MASTRELLONE
+            df_m_disp["Porcentaje_SU"] = df_m_disp["Grasa"].fillna(0) + df_m_disp["Proteina"].fillna(0)
+            df_m_disp["Densidad_Calc"] = df_m_disp["Densidad"].fillna(1.030)
+            df_m_disp["Uso_Estandar"] = df_m_disp["Densidad"].isna() | (df_m_disp["Densidad"] <= 0)
+            df_m_disp["Kg_SU"] = df_m_disp["Litros_Ticket"] * df_m_disp["Densidad_Calc"] * (df_m_disp["Porcentaje_SU"] / 100)
+
+            df_m_disp["Fecha_Str"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
             df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
             df_m_disp["Temperatura"] = df_m_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
@@ -1078,17 +1089,21 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "Proteina" in df_m_disp: df_m_disp["Proteina"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Crioscopia" in df_m_disp: df_m_disp["Crioscopia"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
             
+            df_m_disp["% Sólidos Útiles"] = df_m_disp["Porcentaje_SU"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) and x > 0 else "-")
+            df_m_disp["Kg Sólidos Útiles"] = df_m_disp.apply(lambda r: formato_kg_arg(r["Kg_SU"], r["Uso_Estandar"]), axis=1)
+
             if "UFC" in df_m_disp: df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC" in df_m_disp: df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
             df_m_disp_visual = df_m_disp.rename(columns={
+                "Fecha_Str": "Fecha",
                 "Num_Tambo": "Num Tambo",
                 "Proteina": "Proteína",
                 "Crioscopia": "Crioscopía"
             })
             
             cols = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura"]
-            for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC <200", "SCC <400"]:
+            for col_extra in ["Grasa", "Proteína", "% Sólidos Útiles", "Kg Sólidos Útiles", "Crioscopía", "UFC <200", "SCC <400"]:
                 if col_extra in df_m_disp_visual: cols.append(col_extra)
             
             def highlight_bacsomatic(val, threshold):
@@ -1105,6 +1120,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "SCC <400" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC <400"])
             
             st.dataframe(df_style, use_container_width=True, hide_index=True)
+            st.caption("* Indica uso de densidad estándar (1.030 kg/L).")
 
             st.markdown("---")
             df_pdf_rec = df_m_disp.copy()
@@ -1114,21 +1130,23 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 df_pdf_rec = df_pdf_rec.drop(columns=["SCC"])
             df_pdf_rec = df_pdf_rec.rename(columns={"UFC <200": "UFC", "SCC <400": "SCC"})
             
-            headers_pdf_rec = [("Fecha", 20), ("Código", 16), ("Tambo", 34), ("Litros", 16), ("Temp", 12), ("Grasa", 14), ("Proteina", 15), ("UFC <200", 23), ("SCC <400", 23)]
+            headers_pdf_rec = [("Fecha", 20), ("Código", 16), ("Tambo", 30), ("Litros", 16), ("Temp", 12), ("Grasa", 14), ("Prot", 14), ("% SU", 14), ("Kg SU", 18), ("UFC", 18), ("SCC", 18)]
             mapeo_pdf_rec = [
-                lambda r: r.Fecha if pd.notna(r.Fecha) else "",
+                lambda r: r.Fecha_Str if pd.notna(r.Fecha_Str) else "",
                 lambda r: str(getattr(r, "Num_Tambo", "-")),
-                lambda r: str(r.Tambo)[:20],
+                lambda r: str(r.Tambo)[:16],
                 lambda r: str(r.Litros),
                 lambda r: str(getattr(r, "Temperatura", "-")),
                 lambda r: str(getattr(r, "Grasa", "-")),
                 lambda r: str(getattr(r, "Proteina", "-")),
-                lambda r: str(getattr(r, "UFC", "-")),
-                lambda r: str(getattr(r, "SCC", "-"))
+                lambda r: f"{r.Porcentaje_SU:.2f}%".replace(".", ",") if r.Porcentaje_SU > 0 else "-",
+                lambda r: formato_kg_arg(r.Kg_SU, r.Uso_Estandar, con_unidad=False),
+                lambda r: str(getattr(r, "UFC <200", "-")),
+                lambda r: str(getattr(r, "SCC <400", "-"))
             ]
             
             mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
-            subt_rec = f"Período: {mes_str} {filtro_anio}"
+            subt_rec = f"Período: {mes_str} {filtro_anio} (Interno - Con Sólidos)"
             
             tambos_activos_m = df_mhsa_f["Num_Tambo"].nunique()
             temp_prom_m = df_mhsa_f["Temperatura"].mean() if "Temperatura" in df_mhsa_f else float("nan")
@@ -1146,8 +1164,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 f"Ratio Grasa / Proteína: {ratio_str_m}"
             ]
             
-            pdf_rec_bytes = generar_pdf_mastellone_sin_logo("Reporte de Recepción y Calidad MHSA", subt_rec, metricas_rec, headers_pdf_rec, df_pdf_rec, mapeo_pdf_rec)
-            st.download_button("📥 Descargar Reporte Recepción PDF", data=pdf_rec_bytes, file_name="Reporte_Recepcion_MHSA.pdf", mime="application/pdf")
+            pdf_rec_bytes = generar_pdf_mastellone_sin_logo("Reporte de Recepción y Calidad MHSA (INTERNO)", subt_rec, metricas_rec, headers_pdf_rec, df_pdf_rec, mapeo_pdf_rec)
+            st.download_button("🔒 Descargar Reporte Recepción PDF Interno", data=pdf_rec_bytes, file_name="Reporte_Recepcion_MHSA_Interno.pdf", mime="application/pdf")
         else:
             st.info("No hay registros de recepción MHSA para el período seleccionado.")
 
