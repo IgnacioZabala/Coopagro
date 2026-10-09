@@ -35,7 +35,7 @@ st.markdown(
 )
 
 # --- IDs de Google Drive y Sheets (Blindados con confirmación de descarga) ---
-FILE_ID_REMITOS = "1EH1koI566Bll9b_bqk9Ya4TenOIfczjt"
+FILE_ID_REMITOS = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 FILE_ID_MILKO = "1WR3orOFWXyyMqbVrKh792-8VBh2qN68O"
 FILE_ID_BACSOMATIC = "1SKBiDh4-EyELoYwlvqxB6QXErzYAdqPI"
 FILE_ID_MASTELLONE = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
