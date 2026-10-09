@@ -62,6 +62,28 @@ def encontrar_fila_encabezado(df_temp: pd.DataFrame, palabras_clave: list) -> in
       return row[0]
   return 0
 
+def formato_miles(valor) -> str:
+  return f"{valor:,.0f}".replace(",", ".") if pd.notna(valor) else "0"
+
+def formato_temp(valor) -> str:
+  return f"{valor:.1f}".replace(".", ",") + "°" if pd.notna(valor) else "-"
+
+def formato_kg_arg(x, uso_estandar=False, con_unidad=True):
+  if pd.isna(x) or x <= 0: return "-"
+  s = f"{x:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+  res = f"{s} kg" if con_unidad else s
+  return f"{res}*" if uso_estandar else res
+
+def norm_dens(val):
+  if pd.isna(val): return pd.NA
+  try:
+      d = float(val)
+      if d <= 0: return pd.NA
+      if d > 1000: return d / 1000            
+      if d > 10 and d < 100: return 1 + (d / 1000) 
+      return d
+  except: return pd.NA
+
 @st.cache_data(ttl=60, show_spinner="Sincronizando datos de Coopagro...")
 def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
   df_remitos_raw, df_contactos, df_lab, df_bacsomatic = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -93,12 +115,6 @@ def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
 
   return df_remitos_raw, df_contactos, df_lab, df_bacsomatic
 
-def formato_miles(valor) -> str:
-  return f"{valor:,.0f}".replace(",", ".") if pd.notna(valor) else "0"
-
-def formato_temp(valor) -> str:
-  return f"{valor:.1f}".replace(".", ",") + "°" if pd.notna(valor) else "-"
-
 def limpiar_tambo(val) -> str:
   if pd.isna(val): return ""
   s = str(val).strip().upper()
@@ -115,7 +131,6 @@ def limpiar_tambo(val) -> str:
 
 def extraer_id_tambo(texto) -> str:
   if pd.isna(texto): return ""
-  
   s_temp = str(texto).strip()
   if re.match(r'^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2})?$', s_temp):
       try:
@@ -123,7 +138,6 @@ def extraer_id_tambo(texto) -> str:
           s_temp = f"{dt.day}-{dt.month}"
       except:
           pass
-          
   s = s_temp.upper()
   match = re.search(r'(\d+)\s*([\-\/\s])\s*(\d+)', s)
   if match:
@@ -132,7 +146,6 @@ def extraer_id_tambo(texto) -> str:
       num2 = match.group(3)
       if sep in ['-', '/'] or (len(num1) <= 2 and len(num2) == 1):
           return f"T{num1}-{num2}"
-          
   match_single = re.match(r'^[^\d]*(\d+)', s)
   if match_single: return f"T{match_single.group(1)}"
   return s.strip()
@@ -257,7 +270,6 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
   return output
 
 def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_visibles, es_mensual=False, es_interno=False):
-  # Títulos condicionales
   if es_interno:
       titulo = "Resumen mensual de recolección (USO INTERNO)" if es_mensual else "Resumen semanal de recolección (USO INTERNO)"
   else:
@@ -282,9 +294,7 @@ def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_
   if args_visibles["scc"] and "SCC" in df_productor and pd.notna(df_productor["SCC"].mean()): partes_solidos.append(f"SCC <400: {formato_miles(df_productor['SCC'].mean())}")
   if partes_solidos: metricas.append(f"Promedios Lab -> {' | '.join(partes_solidos)}")
 
-  # Ajustamos el ancho si es interno para que entren las columnas nuevas
   w_fecha, w_remito, w_litros = (18, 22, 18) if es_interno else (26, 34, 30)
-  
   headers = [("Fecha", w_fecha), ("N° Remito", w_remito), ("Litros", w_litros)]
   mapeo = [
       lambda r: getattr(r, "Fecha").strftime("%d/%m/%Y") if pd.notna(getattr(r, "Fecha")) else "",
@@ -313,10 +323,14 @@ def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_
           g = getattr(r, 'Grasa', 0) or 0
           p = getattr(r, 'Proteina', 0) or 0
           l = getattr(r, 'Litros_Ticket', 0) or 0
-          d = getattr(r, 'Densidad', 1.030)
-          if pd.isna(d): d = 1.030
+          d = getattr(r, 'Densidad', pd.NA)
+          
+          uso_est = pd.isna(d) or d <= 0
+          d_calc = 1.030 if uso_est else d
           su = g + p
-          if su > 0: return f"{l * d * (su/100):,.1f}".replace(",", ".")
+          
+          if su > 0: 
+              return formato_kg_arg(l * d_calc * (su/100), uso_est, con_unidad=False)
           return "-"
       mapeo.append(calc_kg)
 
@@ -418,17 +432,16 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
       col_prot = next((c for c in df_lab.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
       col_fp = next((c for c in df_lab.columns if c.lower() == "fp" or "crios" in c.lower()), None)
-      col_dens = next((c for c in df_lab.columns if "dens" in c.lower()), None) # NUEVO: Densidad
+      col_dens = next((c for c in df_lab.columns if "dens" in c.lower()), None)
 
       if col_fat: map_cols[col_fat] = "Grasa_Lab"
       if col_prot: map_cols[col_prot] = "Proteina_Lab"
       if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
-      if col_dens: map_cols[col_dens] = "Densidad_Lab" # NUEVO: Densidad
+      if col_dens: map_cols[col_dens] = "Densidad_Lab"
 
       for c_orig in map_cols.keys():
           df_lab[c_orig] = pd.to_numeric(df_lab[c_orig].astype(str).str.replace(",", "."), errors="coerce")
 
-      # Filtro de seguridad: descarta lecturas erróneas con grasa menor a 1%
       if col_fat:
           df_lab = df_lab[df_lab[col_fat] > 1.0]
 
@@ -490,8 +503,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         if "SCC_Val" in df: df["SCC"] = df["SCC_Val"].combine_first(df["SCC"])
 
     df = df.drop(columns=["lab_index"], errors="ignore")
-    # Llenamos densidades faltantes con un estándar para no fallar el cálculo de Kg (1.030 kg/L)
-    df["Densidad"] = df.get("Densidad", pd.Series(dtype=float)).fillna(1.030) 
+    
+    df["Densidad"] = df.get("Densidad", pd.Series(dtype=float)).apply(norm_dens)
 
     df["Fecha_Cierre_Viernes"] = df["Fecha"] + pd.to_timedelta((4 - df["Fecha"].dt.weekday) % 7, unit="D")
     df["Fecha_Inicio_Sabado"] = df["Fecha_Cierre_Viernes"] - pd.Timedelta(days=6)
@@ -500,7 +513,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     df = df.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
 
     st.sidebar.markdown("---")
-    # SE ELIMINÓ LA VISTA "Envío Masivo Semanal"
     vista_coop = st.sidebar.radio("Sección Coopagro:", ["Panel de Control General", "Reporte Diario de Recibos y Laboratorio", "Gestión y Reportes por Tambo"])
 
     if vista_coop == "Panel de Control General":
@@ -539,13 +551,18 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
             g_pond = calcular_promedio_ponderado(group, "Grasa")
             p_pond = calcular_promedio_ponderado(group, "Proteina")
             
-            # CÁLCULO DE SÓLIDOS
             g_val = g_pond if pd.notna(g_pond) else 0
             p_val = p_pond if pd.notna(p_pond) else 0
             porcentaje_su = g_val + p_val
             
             d_pond = calcular_promedio_ponderado(group, "Densidad") if "Densidad" in group.columns else float("nan")
-            densidad_calc = d_pond if pd.notna(d_pond) and d_pond > 0 else 1.030
+            
+            uso_estandar = False
+            if pd.isna(d_pond) or d_pond <= 0:
+                densidad_calc = 1.030
+                uso_estandar = True
+            else:
+                densidad_calc = d_pond
             
             kg_solidos_utiles = tot_l * densidad_calc * (porcentaje_su / 100) if porcentaje_su > 0 else 0
             
@@ -556,7 +573,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 "Grasa_Ponderada": g_pond,
                 "Proteina_Ponderada": p_pond,
                 "Porcentaje_SU": porcentaje_su,
-                "Kg_Solidos_Utiles": kg_solidos_utiles
+                "Kg_Solidos_Utiles_Num": kg_solidos_utiles,
+                "Uso_Estandar": uso_estandar
             })
         
         df_ranking = pd.DataFrame(ranking_data).sort_values("Litros_Ticket", ascending=False)
@@ -580,7 +598,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
               lambda r: f"{r.Grasa_Ponderada:.2f}%".replace(".", ",") if pd.notna(r.Grasa_Ponderada) else "S/D",
               lambda r: f"{r.Proteina_Ponderada:.2f}%".replace(".", ",") if pd.notna(r.Proteina_Ponderada) else "S/D",
               lambda r: f"{r.Porcentaje_SU:.2f}%".replace(".", ",") if r.Porcentaje_SU > 0 else "S/D",
-              lambda r: f"{r.Kg_Solidos_Utiles:,.1f}".replace(",", ".") if r.Kg_Solidos_Utiles > 0 else "-"
+              lambda r: formato_kg_arg(r.Kg_Solidos_Utiles_Num, r.Uso_Estandar, con_unidad=False)
           ]
           return generar_pdf_base("Informe de Recolección y Calidad - Cooperativa", f"Período Evaluado: {periodo_titulo}", metricas, headers, df_ranking, mapeo)
 
@@ -592,7 +610,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         df_ranking_show["Grasa_Ponderada"] = df_ranking_show["Grasa_Ponderada"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D")
         df_ranking_show["Proteina_Ponderada"] = df_ranking_show["Proteina_Ponderada"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D")
         df_ranking_show["Porcentaje_SU"] = df_ranking_show["Porcentaje_SU"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if x > 0 else "S/D")
-        df_ranking_show["Kg_Solidos_Utiles"] = df_ranking_show["Kg_Solidos_Utiles"].apply(lambda x: f"{x:,.1f} kg".replace(",", ".") if x > 0 else "-")
+        
+        df_ranking_show["Kg_Solidos_Utiles"] = df_ranking_show.apply(lambda r: formato_kg_arg(r["Kg_Solidos_Utiles_Num"], r["Uso_Estandar"]), axis=1)
         
         st.dataframe(df_ranking_show.rename(columns={
             "Tambo": "Nombre del Tambo", 
@@ -602,7 +621,9 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
             "Proteina_Ponderada": "Proteína Pond.",
             "Porcentaje_SU": "% Sólidos Útiles",
             "Kg_Solidos_Utiles": "Total Sólidos (Kg)"
-        }), hide_index=True, use_container_width=True)
+        })[["Código", "Nombre del Tambo", "Litros Totales", "Grasa Pond.", "Proteína Pond.", "% Sólidos Útiles", "Total Sólidos (Kg)"]], hide_index=True, use_container_width=True)
+        
+        st.caption("* Indica que se utilizó una densidad estándar de la industria (1.030 kg/L) por falta de dato del laboratorio.")
 
     elif vista_coop == "Reporte Diario de Recibos y Laboratorio":
       st.header("📅 Reporte Diario de Recibos y Laboratorio")
@@ -755,9 +776,10 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         df_per = df_periodo[df_periodo["Num_Tambo"] == str(t_id)].copy()
 
         if not df_per.empty:
-          # CÁLCULO DE SÓLIDOS PARA LA UI
           df_per["Porcentaje_SU"] = df_per["Grasa"].fillna(0) + df_per["Proteina"].fillna(0)
-          df_per["Kg_SU"] = df_per["Litros_Ticket"] * df_per["Densidad"] * (df_per["Porcentaje_SU"] / 100)
+          df_per["Densidad_Calc"] = df_per["Densidad"].fillna(1.030)
+          df_per["Uso_Estandar"] = df_per["Densidad"].isna() | (df_per["Densidad"] <= 0)
+          df_per["Kg_SU"] = df_per["Litros_Ticket"] * df_per["Densidad_Calc"] * (df_per["Porcentaje_SU"] / 100)
           
           if es_mensual:
             periodo_pdf = f"{MESES_ES.get(periodo_sel.month)} {periodo_sel.year}"
@@ -788,9 +810,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           if v_grasa and "Grasa" in df_per: df_tabla_visual["Grasa"] = df_per["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
           if v_prot and "Proteina" in df_per: df_tabla_visual["Proteína"] = df_per["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
           
-          # Agregamos Sólidos a la tabla UI
-          df_tabla_visual["% Sólidos Útiles"] = df_per["Porcentaje_SU"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) and x > 0 else "-")
-          df_tabla_visual["Kg Sólidos Útiles"] = df_per["Kg_SU"].apply(lambda x: f"{x:,.1f}".replace(",", ".") if pd.notna(x) and x > 0 else "-")
+          df_tabla_visual["% Sólidos Útiles"] = df_per["Porcentaje_SU"].apply(lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) and x > 0 else "-")
+          df_tabla_visual["Kg Sólidos Útiles"] = df_per.apply(lambda r: formato_kg_arg(r["Kg_SU"], r["Uso_Estandar"]), axis=1)
           
           if v_crios and "Crioscopia" in df_per: df_tabla_visual["Crioscopia"] = df_per["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
           if v_ufc and "UFC" in df_per: df_tabla_visual["UFC <200"] = df_per["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
@@ -811,8 +832,841 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
               df_style_coop = df_style_coop.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC <400"])
 
           st.dataframe(df_style_coop, use_container_width=True, hide_index=True)
+          st.caption("* Indica uso de densidad estándar (1.030 kg/L).")
 
   except Exception as e:
     st.error("Error en el Módulo Coopagro:")
     st.code(traceback.format_exc())
+
+# =========================================================================
+# MÓDULO 2: RECEPCIÓN Y CALIDAD MASTELLONE (FASÓN)
+# =========================================================================
+elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
+  st.header("🚛 Recepción, Calidad y Producción Mastellone (Fasón)")
+  import datetime
+  now = datetime.datetime.now()
+
+  def generar_pdf_mastellone_sin_logo(titulo, subtitulo, metricas, headers, df_datos, filas_mapeo, usable_width=190):
+      from fpdf import FPDF
+      pdf = FPDF(orientation="P", unit="mm", format="A4")
+      pdf.set_auto_page_break(auto=True, margin=15)
+      pdf.add_page()
+      
+      pdf.set_y(20)
+      pdf.set_font("Arial", "B", 12)
+      pdf.cell(0, 6, titulo, ln=True, align="C")
+      pdf.ln(2)
+      pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+      pdf.ln(4)
+
+      pdf.set_font("Arial", "B", 11)
+      pdf.cell(0, 7, subtitulo, ln=True)
+      pdf.set_font("Arial", "", 10)
+      for metrica in metricas: pdf.cell(0, 6, metrica, ln=True)
+
+      pdf.ln(6)
+      pdf.set_font("Arial", "B", 8)
+      pdf.set_fill_color(200, 220, 255)
+
+      suma_anchos = sum([w for _, w in headers])
+      factor = usable_width / suma_anchos if suma_anchos > 0 else 1.0
+      headers_ajustados = [(name, w * factor) for name, w in headers]
+
+      for i, (col_name, col_w) in enumerate(headers_ajustados):
+          pdf.cell(col_w, 8, col_name, 1, 1 if i == len(headers_ajustados) - 1 else 0, "C", fill=True)
+
+      for row in df_datos.itertuples(index=False):
+          for i, (fn_mapeo, (_, col_w)) in enumerate(zip(filas_mapeo, headers_ajustados)):
+              val_crudo = fn_mapeo(row)
+              val_limpio = limpiar_valor_str(val_crudo)
+              col_name = headers_ajustados[i][0]
+              align = "L" if "Nombre" in col_name or "Producto" in col_name or "Tambo" in col_name else "C"
+              
+              is_red = False
+              if "UFC" in col_name or "SCC" in col_name:
+                  num_val = parse_valor_celda(val_limpio)
+                  if "UFC" in col_name and num_val > 200: is_red = True
+                  if "SCC" in col_name and num_val > 400: is_red = True
+              
+              if is_red:
+                  pdf.set_text_color(255, 0, 0)
+                  pdf.set_font("Arial", "B", 8)
+              else:
+                  pdf.set_text_color(0, 0, 0)
+                  pdf.set_font("Arial", "", 8)
+
+              pdf.cell(col_w, 7, val_limpio, 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
+
+      pdf.set_text_color(0, 0, 0)
+
+      output = pdf.output(dest="S")
+      if isinstance(output, bytearray): return bytes(output)
+      elif isinstance(output, str): return output.encode('latin1')
+      return output
+  
+  try:
+    with st.spinner("Sincronizando datos de Mastellone..."):
+      xls_prod_mast = pd.ExcelFile(URL_PRODUCCION)
+      hoja_prod_mast = "2026" if "2026" in xls_prod_mast.sheet_names else xls_prod_mast.sheet_names[-1]
+      raw_prod = pd.read_excel(xls_prod_mast, sheet_name=hoja_prod_mast, skiprows=6)
+      df_prod = pd.DataFrame()
+      df_prod["Fecha"] = raw_prod.iloc[:, 0]
+      df_prod["Lote"] = raw_prod.iloc[:, 1]
+      df_prod["Litros Procesados"] = raw_prod.iloc[:, 3]
+      df_prod["Producto Terminado"] = raw_prod.iloc[:, 5]
+      df_prod["PNC"] = raw_prod.iloc[:, 6]
+      df_prod = df_prod.dropna(subset=["Fecha", "Lote"])
+      
+      df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
+      df_prod = df_prod.dropna(subset=["Fecha"])
+      for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
+          df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
+      
+      if len(df_prod) > 0: 
+          df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod["Lote"].astype(str).apply(clasificar_lote_general))
+      else: 
+          df_prod["Producto"], df_prod["Grupo"] = [], []
+      
+      df_prod["Año"] = df_prod["Fecha"].dt.year
+      df_prod["Mes"] = df_prod["Fecha"].dt.month
+      df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
+
+      xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
+      sheet_mhsa = next((s for s in xls_mastellone.sheet_names if "mhsa" in s.lower()), xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0])
+      
+      df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa)
+      
+      df_mhsa = pd.DataFrame()
+      
+      fechas_col = df_mhsa_raw.iloc[:, 0]
+      df_mhsa["Fecha"] = pd.to_datetime(fechas_col, format="%d/%m/%Y", errors="coerce").fillna(pd.to_datetime(fechas_col, dayfirst=True, errors="coerce")).dt.normalize()
+      
+      df_mhsa["N_Remito"] = df_mhsa_raw.iloc[:, 1]
+      df_mhsa["Num_Tambo"] = df_mhsa_raw.iloc[:, 2].apply(limpiar_tambo)
+      df_mhsa["Tambo"] = df_mhsa_raw.iloc[:, 3]
+      df_mhsa["Litros_Ticket"] = pd.to_numeric(df_mhsa_raw.iloc[:, 4].astype(str).str.replace(',', '.'), errors="coerce").fillna(0)
+      df_mhsa["Temperatura"] = pd.to_numeric(df_mhsa_raw.iloc[:, 7].astype(str).str.replace(',', '.'), errors="coerce") if len(df_mhsa_raw.columns) > 7 else pd.NaT
+      
+      df_mhsa = df_mhsa.dropna(subset=["Fecha", "Num_Tambo"])
+      
+      df_mhsa = df_mhsa[(df_mhsa["Fecha"].dt.year >= 2025) & (df_mhsa["Fecha"].dt.year <= 2028)]
+      df_mhsa["Año"] = df_mhsa["Fecha"].dt.year
+      df_mhsa["Mes"] = df_mhsa["Fecha"].dt.month
+
+      df_mhsa = df_mhsa.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
+      df_mhsa["lab_index"] = df_mhsa.groupby(["Num_Tambo", "Fecha"]).cumcount()
+
+      _, _, df_lab_raw, df_bac_raw = cargar_datos_coopagro(URL_REMITOS, URL_MILKO, URL_BACSOMATIC)
+      
+      if not df_lab_raw.empty:
+          df_lab_m = df_lab_raw.copy()
+          col_sample = df_lab_m.columns[0]
+          
+          df_lab_m["Num_Tambo"] = df_lab_m[col_sample].astype(str).apply(extraer_id_tambo)
+          df_lab_m["Fecha_Extraida"] = pd.to_datetime(df_lab_m[col_sample].astype(str).apply(extraer_fecha_texto), errors="coerce")
+          
+          col_date = next((c for c in df_lab_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
+          df_lab_m["Fecha"] = df_lab_m["Fecha_Extraida"].fillna(pd.to_datetime(df_lab_m[col_date], dayfirst=True, errors="coerce").dt.normalize() if col_date else pd.NaT)
+          df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
+          
+          df_lab_m["_sample_str"] = df_lab_m[col_sample].astype(str)
+          df_lab_m = df_lab_m.sort_values(by=["_sample_str"])
+          df_lab_m["lab_index"] = df_lab_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
+          
+          map_cols = {}
+          col_fat = next((c for c in df_lab_m.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
+          col_prot = next((c for c in df_lab_m.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
+          col_fp = next((c for c in df_lab_m.columns if "fp" in c.lower() or "crios" in c.lower()), None)
+          if col_fat: map_cols[col_fat] = "Grasa_Lab"
+          if col_prot: map_cols[col_prot] = "Proteina_Lab"
+          if col_fp: map_cols[col_fp] = "Crioscopia_Lab"
+          
+          if map_cols:
+              df_milko_clean = df_lab_m[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols.keys())].rename(columns=map_cols)
+              for c in map_cols.values(): 
+                  df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
+              
+              df_mhsa = pd.merge(df_mhsa, df_milko_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
+
+              if "Grasa_Lab" in df_mhsa: df_mhsa["Grasa"] = df_mhsa["Grasa_Lab"]
+              if "Proteina_Lab" in df_mhsa: df_mhsa["Proteina"] = df_mhsa["Proteina_Lab"]
+              if "Crioscopia_Lab" in df_mhsa: df_mhsa["Crioscopia"] = df_mhsa["Crioscopia_Lab"]
+
+      if not df_bac_raw.empty:
+          df_bac_m = df_bac_raw.copy()
+          col_sample_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["id usuario", "sample", "tambo"])), df_bac_m.columns[0])
+          
+          df_bac_m["Num_Tambo"] = df_bac_m[col_sample_bac].astype(str).apply(extraer_id_tambo)
+          df_bac_m["Fecha_Extraida"] = pd.to_datetime(df_bac_m[col_sample_bac].astype(str).apply(extraer_fecha_texto), errors="coerce")
+          
+          col_date_bac = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), None)
+          df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], dayfirst=True, errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
+          df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
+          
+          df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
+          df_bac_m = df_bac_m.sort_values(by=["_id_str"])
+          df_bac_m["lab_index"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
+          
+          map_cols_bac = {}
+          col_ufc = next((c for c in df_bac_m.columns if "ufc" in c.lower()), None)
+          col_scc = next((c for c in df_bac_m.columns if any(x in c.lower() for x in ["scc", "celulas", "somáticas"])), None)
+          if col_ufc: map_cols_bac[col_ufc] = "UFC_Val"
+          if col_scc: map_cols_bac[col_scc] = "SCC_Val"
+          
+          if map_cols_bac:
+              df_bac_clean = df_bac_m[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
+              for c in map_cols_bac.values(): 
+                  df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
+              
+              df_mhsa = pd.merge(df_mhsa, df_bac_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
+                      
+              if "UFC_Val" in df_mhsa.columns: df_mhsa["UFC"] = df_mhsa["UFC_Val"]
+              if "SCC_Val" in df_mhsa.columns: df_mhsa["SCC"] = df_mhsa["SCC_Val"]
+
+      df_mhsa = df_mhsa.drop(columns=["lab_index"], errors="ignore")
+
+    st.sidebar.subheader("Filtros Mastellone")
+    anios_mhsa = df_mhsa["Año"].dropna().unique().tolist() if not df_mhsa.empty else []
+    anios_prod = df_mastellone_prod["Año"].dropna().unique().tolist() if not df_mastellone_prod.empty else []
+    todos_anios = sorted(list(set(anios_mhsa + anios_prod)))
+    
+    opciones_anio = ["Todos"] + (todos_anios if todos_anios else [now.year])
+    filtro_anio = st.sidebar.selectbox("Año", opciones_anio, index=opciones_anio.index(now.year) if now.year in opciones_anio else 0, key="m_anio_mastellone")
+    filtro_mes = st.sidebar.selectbox("Mes", ["Todos"] + list(range(1, 13)), index=now.month, key="m_mes_mastellone")
+
+    df_filtrado = df_mastellone_prod.copy()
+    if len(df_filtrado) > 0:
+      if filtro_anio != "Todos": df_filtrado = df_filtrado[df_filtrado["Año"] == filtro_anio]
+      if filtro_mes != "Todos": df_filtrado = df_filtrado[df_filtrado["Mes"] == filtro_mes]
+
+    df_mhsa_f = df_mhsa.copy()
+    if not df_mhsa_f.empty:
+      if filtro_anio != "Todos": df_mhsa_f = df_mhsa_f[df_mhsa_f["Año"] == filtro_anio]
+      if filtro_mes != "Todos": df_mhsa_f = df_mhsa_f[df_mhsa_f["Mes"] == filtro_mes]
+
+    df_consolidado = pd.DataFrame()
+    if len(df_filtrado) > 0:
+      df_c_raw = df_filtrado.copy()
+      df_c_raw["PT_Total"] = df_c_raw["Producto Terminado"] + df_c_raw["PNC"]
+      df_c_raw["Ratio"] = df_c_raw.apply(lambda x: f"{(x['PT_Total'] / x['Litros Procesados'] * 100):.2f}%" if x["Litros Procesados"] > 0 else "0.00%", axis=1)
+      df_consolidado = df_c_raw[["Fecha", "Lote", "Producto", "Litros Procesados", "PT_Total", "Ratio"]].rename(columns={"PT_Total": "Producto Terminado", "Ratio": "Ratio de Conversión (%)"})
+
+    total_litros_ingresados = df_mhsa_f["Litros_Ticket"].sum() if not df_mhsa_f.empty else 0.0
+    total_litros_proc = df_filtrado["Litros Procesados"].sum() if len(df_filtrado) > 0 else 0
+    total_prod_consolidado = df_consolidado["Producto Terminado"].sum() if not df_consolidado.empty else 0
+    ratio_ponderado = (total_prod_consolidado / total_litros_proc * 100) if total_litros_proc > 0 else 0
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Litros Ingresados (MHSA)", formato_miles(total_litros_ingresados))
+    c2.metric("Litros Procesados", formato_miles(total_litros_proc))
+    c3.metric("Total Producto Terminado", formato_miles(total_prod_consolidado))
+    
+    c4, _, _ = st.columns(3)
+    c4.metric("Ratio PT / Procesados", f"{ratio_ponderado:.2f}%")
+
+    tab1, tab2 = st.tabs(["📑 Recepción y Calidad (MHSA)", "🏭 Producción Fasón"])
+    
+    with tab1:
+        st.subheader("Recepción y Calidad de Tambos Mastellone")
+        if not df_mhsa_f.empty:
+            df_m_disp = df_mhsa_f.sort_values(by=["Fecha", "Num_Tambo"]).copy()
+            df_m_disp["Fecha"] = df_m_disp["Fecha"].dt.strftime("%d/%m/%Y")
+            df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
+            df_m_disp["Temperatura"] = df_m_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
+            
+            if "Grasa" in df_m_disp: df_m_disp["Grasa"] = df_m_disp["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            if "Proteina" in df_m_disp: df_m_disp["Proteina"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            if "Crioscopia" in df_m_disp: df_m_disp["Crioscopia"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
+            
+            if "UFC" in df_m_disp: df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            if "SCC" in df_m_disp: df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
+            
+            df_m_disp_visual = df_m_disp.rename(columns={
+                "Num_Tambo": "Num Tambo",
+                "Proteina": "Proteína",
+                "Crioscopia": "Crioscopía"
+            })
+            
+            cols = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura"]
+            for col_extra in ["Grasa", "Proteína", "Crioscopía", "UFC <200", "SCC <400"]:
+                if col_extra in df_m_disp_visual: cols.append(col_extra)
+            
+            def highlight_bacsomatic(val, threshold):
+                try:
+                    if pd.notna(val) and str(val) != "-":
+                        num_val = float(str(val).replace(".", "").replace(",", "."))
+                        if num_val > threshold: return 'color: red; font-weight: bold'
+                except:
+                    pass
+                return ''
+                
+            df_style = df_m_disp_visual[cols].style
+            if "UFC <200" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 200), subset=["UFC <200"])
+            if "SCC <400" in cols: df_style = df_style.map(lambda x: highlight_bacsomatic(x, 400), subset=["SCC <400"])
+            
+            st.dataframe(df_style, use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+            df_pdf_rec = df_m_disp.copy()
+            if "UFC" in df_pdf_rec.columns: 
+                df_pdf_rec = df_pdf_rec.drop(columns=["UFC"])
+            if "SCC" in df_pdf_rec.columns: 
+                df_pdf_rec = df_pdf_rec.drop(columns=["SCC"])
+            df_pdf_rec = df_pdf_rec.rename(columns={"UFC <200": "UFC", "SCC <400": "SCC"})
+            
+            headers_pdf_rec = [("Fecha", 20), ("Código", 16), ("Tambo", 34), ("Litros", 16), ("Temp", 12), ("Grasa", 14), ("Proteina", 15), ("UFC <200", 23), ("SCC <400", 23)]
+            mapeo_pdf_rec = [
+                lambda r: r.Fecha if pd.notna(r.Fecha) else "",
+                lambda r: str(getattr(r, "Num_Tambo", "-")),
+                lambda r: str(r.Tambo)[:20],
+                lambda r: str(r.Litros),
+                lambda r: str(getattr(r, "Temperatura", "-")),
+                lambda r: str(getattr(r, "Grasa", "-")),
+                lambda r: str(getattr(r, "Proteina", "-")),
+                lambda r: str(getattr(r, "UFC", "-")),
+                lambda r: str(getattr(r, "SCC", "-"))
+            ]
+            
+            mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
+            subt_rec = f"Período: {mes_str} {filtro_anio}"
+            
+            tambos_activos_m = df_mhsa_f["Num_Tambo"].nunique()
+            temp_prom_m = df_mhsa_f["Temperatura"].mean() if "Temperatura" in df_mhsa_f else float("nan")
+            grasa_p_m = calcular_promedio_ponderado(df_mhsa_f, "Grasa")
+            prot_p_m = calcular_promedio_ponderado(df_mhsa_f, "Proteina")
+            ratio_gp_m = grasa_p_m / prot_p_m if (prot_p_m and prot_p_m > 0) else pd.NA
+
+            grasa_str_m = f"{grasa_p_m:.2f}%".replace(".", ",") if pd.notna(grasa_p_m) else "S/D"
+            prot_str_m = f"{prot_p_m:.2f}%".replace(".", ",") if pd.notna(prot_p_m) else "S/D"
+            ratio_str_m = f"{ratio_gp_m:.2f}".replace(".", ",") if pd.notna(ratio_gp_m) else "S/D"
+
+            metricas_rec = [
+                f"Tambos Activos: {tambos_activos_m} | Litros Totales: {formato_miles(total_litros_ingresados)} L",
+                f"Temp. Promedio: {formato_temp(temp_prom_m)} | Grasa Ponderada: {grasa_str_m} | Prot. Ponderada: {prot_str_m}",
+                f"Ratio Grasa / Proteína: {ratio_str_m}"
+            ]
+            
+            pdf_rec_bytes = generar_pdf_mastellone_sin_logo("Reporte de Recepción y Calidad MHSA", subt_rec, metricas_rec, headers_pdf_rec, df_pdf_rec, mapeo_pdf_rec)
+            st.download_button("📥 Descargar Reporte Recepción PDF", data=pdf_rec_bytes, file_name="Reporte_Recepcion_MHSA.pdf", mime="application/pdf")
+        else:
+            st.info("No hay registros de recepción MHSA para el período seleccionado.")
+
+    with tab2:
+        st.subheader("Registro de Lotes Fasón (Mastellone - Código 840)")
+        if not df_consolidado.empty:
+            df_c_disp = df_consolidado.copy()
+            df_c_disp["Fecha"] = df_c_disp["Fecha"].dt.strftime("%d/%m/%Y")
+            df_c_disp["Litros Procesados"] = df_c_disp["Litros Procesados"].apply(formato_miles)
+            df_c_disp["Producto Terminado"] = df_c_disp["Producto Terminado"].apply(formato_miles)
+            st.dataframe(df_c_disp, use_container_width=True, hide_index=True)
+            
+            headers_pdf = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Ratio", 15)]
+            mapeo_pdf = [
+                lambda r: r.Fecha if pd.notna(r.Fecha) else "",
+                lambda r: str(r.Lote),
+                lambda r: str(r.Producto),
+                lambda r: str(r.Litros_Procesados),
+                lambda r: str(r.Producto_Terminado),
+                lambda r: str(r.Ratio_Conversion)
+            ]
+
+            df_consolidado_pdf = df_c_disp.rename(columns={
+                "Litros Procesados": "Litros_Procesados",
+                "Producto Terminado": "Producto_Terminado",
+                "Ratio de Conversión (%)": "Ratio_Conversion",
+            })
+
+            ratio_ingresados = (total_prod_consolidado / total_litros_ingresados * 100) if total_litros_ingresados > 0 else 0
+            mes_nombre_m = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
+            subt_mast = f"Período: {mes_nombre_m} {filtro_anio}"
+            
+            metricas_prod = [
+                f"Total Litros Ingresados: {formato_miles(total_litros_ingresados)} L",
+                f"Total Litros Procesados: {formato_miles(total_litros_proc)} L",
+                f"Total Producto Terminado: {formato_miles(total_prod_consolidado)} kg",
+                f"Rendimiento (PT / Procesados): {ratio_ponderado:.2f}%",
+                f"Rendimiento (PT / Ingresados): {ratio_ingresados:.2f}%"
+            ]
+            
+            pdf_mast_bytes = generar_pdf_mastellone_sin_logo("Reporte de Producción Fasón - Mastellone", subt_mast, metricas_prod, headers_pdf, df_consolidado_pdf, mapeo_pdf)
+            st.download_button("📥 Descargar Reporte Producción PDF", data=pdf_mast_bytes, file_name="Reporte_Produccion_Mastellone.pdf", mime="application/pdf")
+        else:
+            st.info("No hay producción de lotes Mastellone para el período seleccionado.")
+
+  except Exception as e:
+    st.error("Se produjo un error procesando los datos de Mastellone:")
+    st.code(traceback.format_exc())
+      
+# =========================================================================
+# MÓDULO 3: PRODUCCIÓN Y RENDIMIENTO COOPAGRO
+# =========================================================================
+elif modulo_principal == "🧀 Producción y Rendimiento":
+  st.header("🧀 Producción y Rendimiento Coopagro")
+  try:
+    with st.spinner("Sincronizando datos de producción y recepción Coopagro..."):
+      import time
+      url_prod_limpia = f"{URL_PRODUCCION}&t={int(time.time())}"
+      xls_prod = pd.ExcelFile(url_prod_limpia)
+      hoja_prod = "2026" if "2026" in xls_prod.sheet_names else xls_prod.sheet_names[-1]
+          
+      raw_prod = pd.read_excel(xls_prod, sheet_name=hoja_prod, skiprows=6)
+      
+      df_prod = pd.DataFrame()
+      df_prod['Fecha'] = raw_prod.iloc[:, 0]
+      df_prod['Lote'] = raw_prod.iloc[:, 1]
+      df_prod['Litros Procesados'] = raw_prod.iloc[:, 3]
+      df_prod['Producto Terminado'] = raw_prod.iloc[:, 5]
+      df_prod['PNC'] = raw_prod.iloc[:, 6]
+      df_prod = df_prod.dropna(subset=['Fecha', 'Lote'])
+      
+      df_prod['Fecha'] = pd.to_datetime(df_prod['Fecha'], format="mixed", dayfirst=True, errors='coerce')
+      df_prod = df_prod.dropna(subset=['Fecha'])
+      
+      for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
+          df_prod[col] = pd.to_numeric(df_prod[col], errors='coerce').fillna(0)
+
+      df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod['Lote'].apply(clasificar_lote_general))
+      df_prod['Año'] = df_prod['Fecha'].dt.year
+      df_prod['Mes'] = df_prod['Fecha'].dt.month
+      df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
+
+      url_remitos_limpia = f"{URL_REMITOS}&t={int(time.time())}"
+      xls_remitos_p = pd.ExcelFile(url_remitos_limpia)
+      hoja_remitos_p = next((s for s in xls_remitos_p.sheet_names if "od-pro-03" in s.lower()), xls_remitos_p.sheet_names[0])
+      raw_recibo = pd.read_excel(xls_remitos_p, sheet_name=hoja_remitos_p, skiprows=4, usecols="B:K")
+      df_recibo = pd.DataFrame()
+      df_recibo['Fecha'] = pd.to_datetime(raw_recibo.iloc[:, 0], format="mixed", dayfirst=True, errors='coerce').dt.normalize()
+      df_recibo['Litros Ingresados'] = pd.to_numeric(raw_recibo.iloc[:, 4], errors='coerce').fillna(0)
+      df_recibo = df_recibo.dropna(subset=['Fecha'])
+      df_recibo['Año'] = df_recibo['Fecha'].dt.year
+      df_recibo['Mes'] = df_recibo['Fecha'].dt.month
+
+    st.sidebar.subheader("Filtros Producción Coopagro")
+    anios_p = sorted(df_prod_coop['Año'].unique().tolist()) if not df_prod_coop.empty else [2026]
+    f_anio_p = st.sidebar.selectbox("Año Producción", ["Todos"] + anios_p, key="p_anio_coop")
+    f_mes_p = st.sidebar.selectbox("Mes Producción", ["Todos"] + list(range(1, 13)), key="p_mes_coop")
+    
+    ver_solidos = st.sidebar.checkbox("Ver Ratio de Sólidos y Conversión", value=True)
+
+    df_p_filtered = df_prod_coop.copy()
+    if f_anio_p != "Todos": df_p_filtered = df_p_filtered[df_p_filtered['Año'] == f_anio_p]
+    if f_mes_p != "Todos": df_p_filtered = df_p_filtered[df_p_filtered['Mes'] == f_mes_p]
+
+    df_r_filtered = df_recibo.copy()
+    if f_anio_p != "Todos": df_r_filtered = df_r_filtered[df_r_filtered['Año'] == f_anio_p]
+    if f_mes_p != "Todos": df_r_filtered = df_r_filtered[df_r_filtered['Mes'] == f_mes_p]
+
+    tot_ingresados_c = df_r_filtered['Litros Ingresados'].sum() if not df_r_filtered.empty else 0
+    tot_proc_c = df_p_filtered['Litros Procesados'].sum() if not df_p_filtered.empty else 0
+    
+    tot_pt_neto = df_p_filtered['Producto Terminado'].sum() if not df_p_filtered.empty else 0
+    tot_pnc_c = df_p_filtered['PNC'].sum() if not df_p_filtered.empty else 0
+    tot_pt_c = tot_pt_neto + tot_pnc_c
+    
+    ratio_proc_c = (tot_pt_c / tot_proc_c * 100) if tot_proc_c > 0 else 0
+    ratio_ing_c = (tot_pt_c / tot_ingresados_c * 100) if tot_ingresados_c > 0 else 0
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Litros Ingresados", formato_miles(tot_ingresados_c))
+    col2.metric("Litros Procesados", formato_miles(tot_proc_c))
+    col3.metric("Producto Terminado", formato_miles(tot_pt_c))
+
+    col4, col5, col6 = st.columns(3)
+    col4.metric("PNC (No Conforme)", formato_miles(tot_pnc_c))
+    col5.metric("Rendimiento (PT / Procesados)", f"{ratio_proc_c:.2f}%")
+    col6.metric("Rendimiento (PT / Ingresados)", f"{ratio_ing_c:.2f}%")
+
+    st.subheader("Detalle de Lotes de Producción Coopagro")
+    if not df_p_filtered.empty:
+        df_p_show = df_p_filtered.copy()
+        df_p_show['Fecha_Dt'] = df_p_show['Fecha']
+        df_p_show['Fecha'] = df_p_show['Fecha_Dt'].dt.strftime('%d/%m/%Y')
+        
+        df_p_show['Litros Procesados Num'] = df_p_show['Litros Procesados']
+        df_p_show['PT_Total_Lote'] = df_p_show['Producto Terminado'] + df_p_show['PNC']
+        
+        _, _, df_lab_raw, _ = cargar_datos_coopagro(URL_REMITOS, URL_MILKO, URL_BACSOMATIC)
+        
+        if not df_lab_raw.empty:
+            df_lab = df_lab_raw.copy()
+            col_date = next((c for c in df_lab.columns if any(x in c.lower() for x in ["fecha", "date", "analyzed"])), df_lab.columns[0])
+            col_fat = next((c for c in df_lab.columns if "fat" in c.lower() or "grasa" in c.lower()), None)
+            col_prot = next((c for c in df_lab.columns if "protein" in c.lower() or "proteina" in c.lower()), None)
+            
+            df_lab['Fecha_Recepcion'] = pd.to_datetime(df_lab[col_date], errors='coerce').dt.normalize()
+            df_lab[col_fat] = pd.to_numeric(df_lab[col_fat].astype(str).str.replace(",", "."), errors="coerce")
+            df_lab[col_prot] = pd.to_numeric(df_lab[col_prot].astype(str).str.replace(",", "."), errors="coerce")
+            
+            df_solidos = df_lab.groupby('Fecha_Recepcion')[[col_fat, col_prot]].mean().reset_index()
+            df_solidos['Solidos_Utiles'] = df_solidos[col_fat] + df_solidos[col_prot]
+            
+            df_solidos['Fecha_Produccion_Asociada'] = df_solidos['Fecha_Recepcion'] + pd.Timedelta(days=1)
+            
+            df_p_show = pd.merge(df_p_show, df_solidos[['Fecha_Produccion_Asociada', 'Solidos_Utiles']], 
+                                 left_on='Fecha_Dt', right_on='Fecha_Produccion_Asociada', how='left')
+            
+            df_p_show['Kg Solidos en Tina'] = df_p_show['Litros Procesados Num'] * (df_p_show['Solidos_Utiles'] / 100)
+            df_p_show['Tasa de Conversión'] = df_p_show.apply(
+                lambda x: x['PT_Total_Lote'] / x['Kg Solidos en Tina'] if pd.notna(x['Kg Solidos en Tina']) and x['Kg Solidos en Tina'] > 0 else pd.NA, 
+                axis=1
+            )
+            
+            df_p_show['% Sólidos (Día -1)'] = df_p_show['Solidos_Utiles'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "S/D")
+            df_p_show['Conversión (Kg/Kg)'] = df_p_show['Tasa de Conversión'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "S/D")
+        else:
+            df_p_show['% Sólidos (Día -1)'] = "S/D"
+            df_p_show['Conversión (Kg/Kg)'] = "S/D"
+
+        df_p_show['Litros Procesados'] = df_p_show['Litros Procesados'].apply(formato_miles)
+        df_p_show['Producto Terminado'] = df_p_show['PT_Total_Lote'].apply(formato_miles)
+        df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
+        df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(x['PT_Total_Lote'] / x['Litros Procesados Num'] * 100):.2f}%" if x['Litros Procesados Num'] > 0 else "0.00%", axis=1)
+        
+        cols_visuales = ['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']
+        if ver_solidos:
+            cols_visuales.extend(['% Sólidos (Día -1)', 'Conversión (Kg/Kg)'])
+            
+        st.dataframe(df_p_show[cols_visuales], use_container_width=True, hide_index=True)
+        
+        headers_pdf_c = [("Fecha", 20), ("Lote", 25), ("Producto", 45), ("Litros", 20), ("Prod.", 20), ("Rend.", 15)]
+        mapeo_pdf_c = [
+            lambda r: r.Fecha if pd.notna(r.Fecha) else "",
+            lambda r: str(r.Lote),
+            lambda r: str(r.Producto),
+            lambda r: str(r.Litros_Procesados),
+            lambda r: str(r.Producto_Terminado),
+            lambda r: str(r.Rendimiento_Lote)
+        ]
+        
+        if ver_solidos:
+            headers_pdf_c.extend([("Sólidos", 15), ("Conv.", 15)])
+            mapeo_pdf_c.extend([
+                lambda r: str(getattr(r, '% Sólidos (Día -1)', 'S/D')),
+                lambda r: str(getattr(r, 'Conversión (Kg/Kg)', 'S/D'))
+            ])
+        
+        mes_nombre_pdf = MESES_ES.get(f_mes_p, str(f_mes_p)) if f_mes_p != "Todos" else "Todos los meses"
+        anio_pdf = str(f_anio_p) if f_anio_p != "Todos" else "General"
+        subtitulo_periodo = f"Período: {mes_nombre_pdf} {anio_pdf}" if f_mes_p != "Todos" else f"Período: Año {anio_pdf}"
+
+        metricas_pdf_coop = [
+            f"Total Litros Ingresados: {formato_miles(tot_ingresados_c)} L",
+            f"Total Litros Procesados: {formato_miles(tot_proc_c)} L",
+            f"Total Producto Terminado: {formato_miles(tot_pt_c)} kg",
+            f"Ratio Litros Procesados / Producto Terminado: {ratio_proc_c:.2f}%",
+            f"Ratio Litros Ingresados / Producto Terminado: {ratio_ing_c:.2f}%"
+        ]
+        
+        df_pdf_prep = df_p_show.rename(columns={"Litros Procesados": "Litros_Procesados", "Producto Terminado": "Producto_Terminado", "Rendimiento Lote": "Rendimiento_Lote"})
+        pdf_coop_bytes = generar_pdf_base("Reporte de Producción y Rendimiento - Coopagro", subtitulo_periodo, metricas_pdf_coop, headers_pdf_c, df_pdf_prep, mapeo_pdf_c)
+        
+        prefijo_nombre = f"{f_mes_p}- " if f_mes_p != "Todos" else "General - "
+        nombre_archivo_pdf = f"{prefijo_nombre}Reporte de Producción Coopagro {mes_nombre_pdf} {anio_pdf}.pdf"
+        
+        st.download_button("📥 Descargar Reporte PDF Coopagro", data=pdf_coop_bytes, file_name=nombre_archivo_pdf, mime="application/pdf")
+    else:
+        st.info("No hay registros de producción para el período seleccionado.")
+
+  except Exception as e:
+    st.error(f"Error en el Módulo de Producción y Rendimiento: {e}")
+    st.code(traceback.format_exc())
+
+# =========================================================================
+# MÓDULO 4: INSUMOS, INVENTARIO Y COSTOS
+# =========================================================================
+elif modulo_principal == "📦 Insumos, Inventario y Costos":
+    st.header("📦 Gestión de Insumos, Inventario y Costos Variables")
+  
+    def generar_pdf_costos_mes(periodo_texto, fecha_stock_txt, valor_total, tinas_mes, kilos_mes, costo_insumos_total_mes, costo_por_kilo, costo_aditivos_kilo, costo_envasado_kilo, costo_cip_kilo, df_datos):
+        titulo = "Reporte Mensual de Insumos, Inventario y Costos"
+        subtitulo = f"Período Evaluado: {periodo_texto}  |  Stock al: {fecha_stock_txt}"
+        metricas = [
+            f"Capital Inmovilizado (Stock Relevado): $ {formato_miles(valor_total)}",
+            f"Tinas Producidas: {tinas_mes} | Kilos de Queso: {formato_miles(kilos_mes)} kg",
+            f"Costo Total Insumos del Mes: $ {formato_miles(costo_insumos_total_mes)}",
+            f"Costo Variable Total / Kilo Producido: $ {costo_por_kilo:,.2f}".replace(",", "."),
+            f"   - Desglose / kg: Aditivos: $ {costo_aditivos_kilo:,.2f}".replace(",", ".") + f" | Envasado: $ {costo_envasado_kilo:,.2f}".replace(",", ".") + f" | CIP: $ {costo_cip_kilo:,.2f}".replace(",", ".")
+        ]
+        
+        df_pdf = df_datos.copy()
+        df_pdf['Stock_Fisico_Fmt'] = df_pdf['Stock Base Físico']
+        df_pdf['Precio_Unit_Fmt'] = df_pdf['Precio Unitario']
+        df_pdf['Valorizacion_Fisica_Fmt'] = df_pdf['Valorización Física ($)']
+
+        headers = [("Insumo", 60), ("Cat.", 20), ("Stock Físico", 25), ("Unidad", 15), ("Precio Unit.", 30), ("Valorización ($)", 50)]
+        mapeo = [
+            lambda r: str(getattr(r, "Insumo", ""))[:28],
+            lambda r: str(getattr(r, "Categoría", ""))[:10],
+            lambda r: formato_miles(getattr(r, "Stock_Fisico_Fmt", 0)),
+            lambda r: str(getattr(r, "Unidad", ""))[:8],
+            lambda r: f"$ {getattr(r, 'Precio_Unit_Fmt', 0):,.2f}".replace(",", "."),
+            lambda r: f"$ {getattr(r, 'Valorizacion_Fisica_Fmt', 0):,.2f}".replace(",", ".")
+        ]
+        return generar_pdf_base(titulo, subtitulo, metricas, headers, df_pdf, mapeo)
+
+    try:
+        with st.spinner("Descargando base de datos de insumos..."):
+            import time
+            import re
+            
+            URL_MOVIMIENTOS = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/export?format=xlsx"
+            xls_movimientos = pd.ExcelFile(URL_MOVIMIENTOS)
+            
+            URL_MAESTRO = f"https://docs.google.com/spreadsheets/d/{SHEET_MAESTRO_ID}/export?format=xlsx"
+            xls_maestro = pd.ExcelFile(URL_MAESTRO)
+            
+            sheet_maestro = next((s for s in xls_maestro.sheet_names if "maestro" in s.lower()), None)
+            sheet_stock = next((s for s in xls_movimientos.sheet_names if "stock" in s.lower()), None)
+            sheet_ingresos = next((s for s in xls_movimientos.sheet_names if "ingresos" in s.lower()), None)
+            
+            df_maestro = pd.read_excel(xls_maestro, sheet_name=sheet_maestro).dropna(how='all') if sheet_maestro else pd.DataFrame()
+            df_stock_form = pd.read_excel(xls_movimientos, sheet_name=sheet_stock).dropna(how='all') if sheet_stock else pd.DataFrame()
+            df_ingresos_form = pd.read_excel(xls_movimientos, sheet_name=sheet_ingresos).dropna(how='all') if sheet_ingresos else pd.DataFrame()
+
+            df_maestro.columns = df_maestro.columns.astype(str).str.strip()
+            df_stock_form.columns = df_stock_form.columns.astype(str).str.strip()
+            df_ingresos_form.columns = df_ingresos_form.columns.astype(str).str.strip()
+
+            if 'Insumo' in df_maestro.columns:
+                df_maestro['Insumo'] = df_maestro['Insumo'].astype(str).str.strip()
+                df_maestro['Insumo_Key'] = df_maestro['Insumo'].str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
+            else:
+                df_maestro['Insumo_Key'] = 'desconocido'
+                st.error("⚠️ La columna 'Insumo' no se encontró en el Maestro.")
+
+            cols_requeridas_maestro = {
+                'Insumo': 'Desconocido', 'Categoría': 'General', 'Unidad': 'un',
+                'Precio Unitario': 0.0, 'Consumo por tina': 0.0, 'Stock de seguridad': 0.0,
+                'Demora proveedor (dias)': 0.0, 'Consumo Diario Promedio': 0.0
+            }
+            for col, val_def in cols_requeridas_maestro.items():
+                if col not in df_maestro.columns:
+                    df_maestro[col] = val_def
+
+            cols_num_m = ['Precio Unitario', 'Consumo por tina', 'Stock de seguridad', 'Demora proveedor (dias)', 'Consumo Diario Promedio']
+            for col in cols_num_m:
+                df_maestro[col] = pd.to_numeric(df_maestro[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("📅 Filtro de Costos y Stock")
+            anios_disponibles = [2026, 2027]
+            meses_disponibles = list(MESES_ES.keys())
+            
+            filtro_anio_costo = st.sidebar.selectbox("Año de Análisis", anios_disponibles, index=0, key="costo_anio")
+            filtro_mes_costo = st.sidebar.selectbox("Mes de Análisis", meses_disponibles, format_func=lambda m: MESES_ES[m], index=8, key="costo_mes")
+
+            if not df_ingresos_form.empty and 'Cantidad recibida' in df_ingresos_form.columns:
+                df_ingresos_form['Insumo'] = df_ingresos_form['Insumo'].astype(str).str.strip()
+                df_ingresos_form['Insumo_Key'] = df_ingresos_form['Insumo'].str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
+                
+                df_ingresos_form['Cantidad recibida'] = pd.to_numeric(df_ingresos_form['Cantidad recibida'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+                df_ingresos_form['Costo total (pesos)'] = pd.to_numeric(df_ingresos_form.get('Costo total (pesos)', 0).astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+                
+                col_fecha_ing = next((c for c in df_ingresos_form.columns if 'fecha' in c.lower()), next((c for c in df_ingresos_form.columns if 'marca' in c.lower()), None))
+                
+                if col_fecha_ing:
+                    df_ingresos_form['Fecha_Dt'] = pd.to_datetime(df_ingresos_form[col_fecha_ing], format="mixed", dayfirst=True, errors='coerce')
+                    df_ingresos_mes = df_ingresos_form[(df_ingresos_form['Fecha_Dt'].dt.year == filtro_anio_costo) & (df_ingresos_form['Fecha_Dt'].dt.month == filtro_mes_costo)]
+                else:
+                    df_ingresos_mes = df_ingresos_form
+
+                compras_totales = df_ingresos_mes.groupby('Insumo_Key')['Cantidad recibida'].sum().reset_index()
+                compras_totales.rename(columns={'Cantidad recibida': 'Total Ingresado'}, inplace=True)
+                
+                df_ingresos_form['Precio Calculado'] = df_ingresos_form.apply(lambda x: x['Costo total (pesos)'] / x['Cantidad recibida'] if x['Cantidad recibida'] > 0 else 0, axis=1)
+                precios_nuevos = df_ingresos_form[df_ingresos_form['Precio Calculado'] > 0].groupby('Insumo_Key')['Precio Calculado'].last().reset_index()
+            else:
+                compras_totales = pd.DataFrame(columns=['Insumo_Key', 'Total Ingresado'])
+                precios_nuevos = pd.DataFrame(columns=['Insumo_Key', 'Precio Calculado'])
+
+            fecha_maxima_stock = pd.NaT
+
+            if not df_stock_form.empty:
+                cols_base = [c for c in df_stock_form.columns if 'marca' in c.lower() or 'fecha' in c.lower()]
+                nombres_viejos = ['insumo', 'stock fisico real', 'columna 5']
+                cols_viejas = [c for c in df_stock_form.columns if c.lower() in nombres_viejos]
+                df_stock_limpio = df_stock_form.drop(columns=cols_viejas, errors='ignore')
+                cols_insumos = [c for c in df_stock_limpio.columns if c not in cols_base and not c.lower().startswith('unnamed')]
+
+                df_stock_long = df_stock_limpio.melt(
+                    id_vars=cols_base,
+                    value_vars=cols_insumos,
+                    var_name='Insumo_Form',
+                    value_name='Stock fisico real'
+                )
+
+                df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
+                df_stock_long['Stock fisico real'] = pd.to_numeric(df_stock_long['Stock fisico real'].astype(str).str.replace(',', '.'), errors='coerce')
+                df_stock_long = df_stock_long.dropna(subset=['Stock fisico real'])
+                df_stock_long['Insumo_Key'] = df_stock_long['Insumo_Form'].astype(str).str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
+
+                col_fecha_stock = next((c for c in cols_base if 'fecha' in c.lower()), cols_base[0] if cols_base else None)
+                
+                if col_fecha_stock:
+                    df_stock_long['Fecha_Dt'] = pd.to_datetime(df_stock_long[col_fecha_stock], format="mixed", dayfirst=True, errors='coerce')
+                    mask = (df_stock_long['Fecha_Dt'].dt.year == filtro_anio_costo) & (df_stock_long['Fecha_Dt'].dt.month == filtro_mes_costo)
+                    df_stock_mes = df_stock_long[mask]
+                    
+                    if not df_stock_mes.empty:
+                        ultimo_stock = df_stock_mes.sort_values('Fecha_Dt').groupby('Insumo_Key').last().reset_index()
+                        fecha_maxima_stock = df_stock_mes['Fecha_Dt'].max()
+                    else:
+                        ultimo_stock = pd.DataFrame(columns=['Insumo_Key', 'Stock Base Físico'])
+                else:
+                    ultimo_stock = df_stock_long.groupby('Insumo_Key').last().reset_index()
+                
+                ultimo_stock.rename(columns={'Stock fisico real': 'Stock Base Físico'}, inplace=True)
+            else:
+                ultimo_stock = pd.DataFrame(columns=['Insumo_Key', 'Stock Base Físico'])
+
+            tinas_mes, kilos_mes, litros_procesados_mes = 0, 0.0, 0.0
+            try:
+                xls_prod_ins = pd.ExcelFile(URL_PRODUCCION)
+                hoja_p_ins = "2026" if "2026" in xls_prod_ins.sheet_names else xls_prod_ins.sheet_names[-1]
+                raw_p_ins = pd.read_excel(xls_prod_ins, sheet_name=hoja_p_ins, skiprows=6)
+                df_p_ins = pd.DataFrame()
+                df_p_ins['Fecha'] = pd.to_datetime(raw_p_ins.iloc[:, 0], format="mixed", dayfirst=True, errors='coerce')
+                df_p_ins['Lote'] = raw_p_ins.iloc[:, 1]
+                df_p_ins['Litros Procesados'] = pd.to_numeric(raw_p_ins.iloc[:, 3], errors='coerce').fillna(0)
+                df_p_ins['Prod Terminado'] = pd.to_numeric(raw_p_ins.iloc[:, 5], errors='coerce').fillna(0)
+                df_p_ins['PNC'] = pd.to_numeric(raw_p_ins.iloc[:, 6], errors='coerce').fillna(0)
+                df_p_ins = df_p_ins.dropna(subset=['Fecha', 'Lote'])
+                
+                _, df_p_ins['Grupo'] = zip(*df_p_ins['Lote'].apply(clasificar_lote_general))
+                df_p_mes = df_p_ins[(df_p_ins['Grupo'] == 'Coopagro') & (df_p_ins['Fecha'].dt.year == filtro_anio_costo) & (df_p_ins['Fecha'].dt.month == filtro_mes_costo)]
+                
+                litros_procesados_mes = df_p_mes['Litros Procesados'].sum()
+                kilos_mes = (df_p_mes['Prod Terminado'] + df_p_mes['PNC']).sum()
+                tinas_mes = round(litros_procesados_mes / 8000) if litros_procesados_mes > 0 else 0
+            except Exception:
+                pass
+
+            df_master_calc = pd.merge(df_maestro, ultimo_stock[['Insumo_Key', 'Stock Base Físico']], on='Insumo_Key', how='left').fillna(0)
+            df_master_calc = pd.merge(df_master_calc, compras_totales, on='Insumo_Key', how='left').fillna(0)
+            
+            if not precios_nuevos.empty and 'Insumo_Key' in precios_nuevos.columns:
+                df_master_calc = pd.merge(df_master_calc, precios_nuevos, on='Insumo_Key', how='left')
+                if 'Precio Calculado' in df_master_calc.columns:
+                    df_master_calc['Precio Unitario'] = df_master_calc['Precio Calculado'].combine_first(df_master_calc['Precio Unitario'])
+
+            df_master_calc = df_master_calc[~df_master_calc['Insumo'].str.lower().isin(['nan', '0', 'desconocido', ''])]
+
+            df_master_calc['Consumo Teórico Mes'] = tinas_mes * df_master_calc['Consumo por tina']
+            
+            df_master_calc['Valorización Física ($)'] = df_master_calc['Stock Base Físico'] * df_master_calc['Precio Unitario']
+
+            df_master_calc['Stock Actual'] = (df_master_calc['Stock Base Físico'] + df_master_calc['Total Ingresado']) - df_master_calc['Consumo Teórico Mes']
+            df_master_calc['Stock Actual'] = df_master_calc['Stock Actual'].apply(lambda x: max(0.0, x))
+            
+            df_master_calc['Punto de Pedido'] = (df_master_calc['Consumo Diario Promedio'] * df_master_calc['Demora proveedor (dias)']) + df_master_calc['Stock de seguridad']
+            df_master_calc['Valorización Proyectada ($)'] = df_master_calc['Stock Actual'] * df_master_calc['Precio Unitario']
+            
+            df_master_calc['Estado'] = df_master_calc.apply(
+                lambda x: '🔴 Crítico' if x['Stock Actual'] <= x['Stock de seguridad'] else ('🟡 Reponer' if x['Stock Actual'] <= x['Punto de Pedido'] else '🟢 Normal'), axis=1
+            )
+
+            df_master_calc['Costo Total Insumos Mes'] = df_master_calc['Consumo Teórico Mes'] * df_master_calc['Precio Unitario']
+            
+            costo_insumos_total_mes = df_master_calc['Costo Total Insumos Mes'].sum()
+            costo_por_kilo = (costo_insumos_total_mes / kilos_mes) if kilos_mes > 0 else 0.0
+            
+            df_aditivos = df_master_calc[df_master_calc['Categoría'].str.strip().str.lower() == 'aditivos']
+            df_envasado = df_master_calc[df_master_calc['Categoría'].str.strip().str.lower() == 'envasado']
+            df_cip = df_master_calc[df_master_calc['Categoría'].str.strip().str.lower() == 'cip']
+            
+            costo_aditivos_total = df_aditivos['Costo Total Insumos Mes'].sum()
+            costo_envasado_total = df_envasado['Costo Total Insumos Mes'].sum()
+            costo_cip_total = df_cip['Costo Total Insumos Mes'].sum()
+            
+            costo_aditivos_kilo = (costo_aditivos_total / kilos_mes) if kilos_mes > 0 else 0.0
+            costo_envasado_kilo = (costo_envasado_total / kilos_mes) if kilos_mes > 0 else 0.0
+            costo_cip_kilo = (costo_cip_total / kilos_mes) if kilos_mes > 0 else 0.0
+
+        tab_inv1, tab_inv2, tab_inv3 = st.tabs([
+            "📊 Alertas y Reposición", 
+            "💰 Stock Valorizado", 
+            f"🧀 Costos y Rendimiento ({MESES_ES[filtro_mes_costo]} {filtro_anio_costo})"
+        ])
+
+        with tab_inv1:
+            st.subheader(f"Control de Alertas — {MESES_ES[filtro_mes_costo]} {filtro_anio_costo}")
+            
+            st.info("**Guía rápida de lectura:**\n"
+                    "• **Stock Proyectado:** Último recuento físico + Ingresos del mes - Consumo teórico de las tinas producidas en el mes.\n"
+                    "• **Punto de Pedido:** Consumo promedio durante los días de demora del proveedor + tu stock de seguridad.\n"
+                    "• **Estado:** Te avisa 🟡 **Reponer** si el stock proyectado perfora el punto de pedido, o 🔴 **Crítico** si toca tu stock de seguridad.")
+            
+            c2, c3, c4 = st.columns(3)
+            c2.metric(f"Tinas ({MESES_ES[filtro_mes_costo][:3]})", tinas_mes)
+            c3.metric("Insumos Críticos", len(df_master_calc[df_master_calc['Estado'] == '🔴 Crítico']))
+            c4.metric("Insumos a Reponer", len(df_master_calc[df_master_calc['Estado'] == '🟡 Reponer']))
+
+            df_mostrar = df_master_calc[['Insumo', 'Categoría', 'Stock Actual', 'Unidad', 'Punto de Pedido', 'Estado']].copy()
+            df_mostrar = df_mostrar.rename(columns={'Stock Actual': 'Stock Proyectado'})
+            st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+
+        with tab_inv2:
+            if pd.notna(fecha_maxima_stock):
+                titulo_valorizado = f"Stock al {fecha_maxima_stock.day} de {MESES_ES[filtro_mes_costo]} de {filtro_anio_costo}"
+            else:
+                titulo_valorizado = f"Inventario y Valorización ({MESES_ES[filtro_mes_costo]} {filtro_anio_costo})"
+                
+            st.subheader(titulo_valorizado)
+            
+            valor_total_fisico = df_master_calc['Valorización Física ($)'].sum()
+            st.metric("Capital Inmovilizado (Stock Relevado)", f"$ {formato_miles(valor_total_fisico)}")
+
+            df_valorizado = df_master_calc[['Insumo', 'Categoría', 'Stock Base Físico', 'Unidad', 'Precio Unitario', 'Valorización Física ($)']].copy()
+            df_valorizado = df_valorizado.rename(columns={'Stock Base Físico': 'Stock Físico (Relevado)'})
+            df_valorizado = df_valorizado.sort_values('Valorización Física ($)', ascending=False)
+            
+            df_valorizado['Precio Unitario'] = df_valorizado['Precio Unitario'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
+            df_valorizado['Valorización Física ($)'] = df_valorizado['Valorización Física ($)'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
+            
+            st.dataframe(df_valorizado, use_container_width=True, hide_index=True)
+
+        with tab_inv3:
+            st.subheader(f"Costos Variables ({MESES_ES[filtro_mes_costo]} {filtro_anio_costo})")
+            
+            k1, k2, k3 = st.columns(3)
+            k1.metric("Kilos de Queso", f"{formato_miles(kilos_mes)} kg")
+            k2.metric("Costo Total Insumos", f"$ {formato_miles(costo_insumos_total_mes)}")
+            k3.metric("Costo Total / Kilo Producido", f"$ {costo_por_kilo:,.2f}".replace(",", "."))
+            
+            st.markdown("---")
+            st.markdown("##### Desglose de Costo por Kilo según Categoría")
+            c_ad, c_env, c_cip = st.columns(3)
+            c_ad.metric("🧀 Aditivos / kg", f"$ {costo_aditivos_kilo:,.2f}".replace(",", "."))
+            c_env.metric("📦 Envasado / kg", f"$ {costo_envasado_kilo:,.2f}".replace(",", "."))
+            c_cip.metric("🧼 CIP / kg", f"$ {costo_cip_kilo:,.2f}".replace(",", "."))
+
+            st.markdown("---")
+            periodo_pdf_str = f"{MESES_ES[filtro_mes_costo]} {filtro_anio_costo}"
+            fecha_stock_txt = f"{fecha_maxima_stock.strftime('%d/%m/%Y')}" if pd.notna(fecha_maxima_stock) else "Sin recuento registrado"
+            
+            pdf_costos_bytes = generar_pdf_costos_mes(
+                periodo_pdf_str, fecha_stock_txt, valor_total_fisico, tinas_mes, kilos_mes, 
+                costo_insumos_total_mes, costo_por_kilo, costo_aditivos_kilo, costo_envasado_kilo, costo_cip_kilo, df_master_calc
+            )
+            st.download_button(
+                "📥 Descargar Reporte Completo PDF",
+                data=pdf_costos_bytes,
+                file_name=f"Reporte_Mensual_{filtro_mes_costo}_{filtro_anio_costo}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+
+            df_receta = df_master_calc[df_master_calc['Consumo por tina'] > 0].copy()
+            df_receta['Costo en Tina ($)'] = df_receta['Consumo por tina'] * df_receta['Precio Unitario']
+            
+            df_receta_show = df_receta[['Insumo', 'Categoría', 'Consumo por tina', 'Unidad', 'Precio Unitario', 'Costo en Tina ($)', 'Costo Total Insumos Mes']].copy()
+            df_receta_show['Precio Unitario'] = df_receta_show['Precio Unitario'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
+            df_receta_show['Costo en Tina ($)'] = df_receta_show['Costo en Tina ($)'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
+            df_receta_show['Costo Total Insumos Mes'] = df_receta_show['Costo Total Insumos Mes'].apply(lambda x: f"$ {x:,.2f}".replace(",", "."))
+            
+            st.dataframe(df_receta_show, use_container_width=True, hide_index=True)
+
+    except Exception as e:
+        st.error(f"Error procesando el módulo de insumos: {e}")
+        st.code(traceback.format_exc())
 
