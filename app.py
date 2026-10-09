@@ -34,7 +34,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- IDs de Google Drive y Sheets (Blindados con confirmación de descarga) ---
+# --- IDs de Google Drive y Sheets (Blindados) ---
 FILE_ID_REMITOS = "19OVD6xBeK08o4cW1XrdMr54L1nciAJC2"
 FILE_ID_MILKO = "1WR3orOFWXyyMqbVrKh792-8VBh2qN68O"
 FILE_ID_BACSOMATIC = "1SKBiDh4-EyELoYwlvqxB6QXErzYAdqPI"
@@ -43,11 +43,11 @@ ID_PRODUCCION = "1EH1koI566Bll9b_bqk9Ya4TenOIfczjt"
 SHEET_INSUMOS_ID = "1OY1g-dRIVzVbU_cL6C1UzCUCeCKUxbT6RiAGLX7-Kpo"
 SHEET_MAESTRO_ID = "1VHJPBN1R2aECfni_5JKHACOZiC6LCFNKyOIPE7ye5yQ"
 
-URL_REMITOS = f"https://drive.google.com/uc?export=download&confirm=t&id={FILE_ID_REMITOS}"
-URL_MILKO = f"https://drive.google.com/uc?export=download&confirm=t&id={FILE_ID_MILKO}"
-URL_BACSOMATIC = f"https://drive.google.com/uc?export=download&confirm=t&id={FILE_ID_BACSOMATIC}"
-URL_MASTELLONE = f"https://drive.google.com/uc?export=download&confirm=t&id={FILE_ID_MASTELLONE}"
-URL_PRODUCCION = f"https://drive.google.com/uc?export=download&confirm=t&id={ID_PRODUCCION}"
+URL_REMITOS = f"https://drive.google.com/uc?export=download&id={FILE_ID_REMITOS}"
+URL_MILKO = f"https://drive.google.com/uc?export=download&id={FILE_ID_MILKO}"
+URL_BACSOMATIC = f"https://drive.google.com/uc?export=download&id={FILE_ID_BACSOMATIC}"
+URL_MASTELLONE = f"https://drive.google.com/uc?export=download&id={FILE_ID_MASTELLONE}"
+URL_PRODUCCION = f"https://drive.google.com/uc?export=download&id={ID_PRODUCCION}"
 
 MESES_ES = {
     1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
@@ -397,6 +397,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         
     df["Tambo"] = df["Tambo"].replace("#REF!", "Desconocido")
 
+    # --- CORRECCIÓN 1: Agregamos lab_index a los remitos ---
     df = df.sort_values(by=["Num_Tambo", "Fecha", "N_Remito"])
     df["lab_index"] = df.groupby(["Num_Tambo", "Fecha"]).cumcount()
 
@@ -421,6 +422,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       for c_orig in map_cols.keys():
           df_lab[c_orig] = pd.to_numeric(df_lab[c_orig].astype(str).str.replace(",", "."), errors="coerce")
 
+      # Filtro de seguridad: descarta lecturas erróneas con grasa menor a 1%
       if col_fat:
           df_lab = df_lab[df_lab[col_fat] > 1.0]
 
@@ -432,12 +434,16 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           df_lab["_sample_str"] = df_lab[col_sample].astype(str)
           df_lab = df_lab.sort_values(by=["Num_Tambo", "Fecha", "_sample_str"], ascending=[True, True, False])
       
+      # --- CORRECCIÓN 2: Eliminamos drop_duplicates y creamos lab_index ---
+      # df_lab = df_lab.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
       df_lab["lab_index"] = df_lab.groupby(["Num_Tambo", "Fecha"]).cumcount()
       
       if map_cols:
+        # Agregamos lab_index
         df_milko_clean = df_lab[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols.keys())].rename(columns=map_cols)
         for c in map_cols.values(): df_milko_clean[c] = pd.to_numeric(df_milko_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
+        # Merge usando lab_index
         df = pd.merge(df, df_milko_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
                     
         if "Grasa_Lab" in df: df["Grasa"] = df["Grasa_Lab"].combine_first(df["Grasa"])
@@ -461,6 +467,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           df_bac["_sample_str"] = df_bac[col_id].astype(str)
           df_bac = df_bac.sort_values(by=["Num_Tambo", "Fecha", "_sample_str"], ascending=[True, True, False])
           
+      # --- CORRECCIÓN 3: Eliminamos drop_duplicates y creamos lab_index ---
+      # df_bac = df_bac.drop_duplicates(subset=["Num_Tambo", "Fecha"], keep="first")
       df_bac["lab_index"] = df_bac.groupby(["Num_Tambo", "Fecha"]).cumcount()
       
       map_cols_bac = {}
@@ -470,14 +478,17 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if col_scc: map_cols_bac[col_scc] = "SCC_Val"
       
       if map_cols_bac:
+        # Agregamos lab_index
         df_bac_clean = df_bac[["Num_Tambo", "Fecha", "lab_index"] + list(map_cols_bac.keys())].rename(columns=map_cols_bac)
         for c in map_cols_bac.values(): df_bac_clean[c] = pd.to_numeric(df_bac_clean[c].astype(str).str.replace(",", "."), errors="coerce")
         
+        # Merge usando lab_index
         df = pd.merge(df, df_bac_clean, on=["Num_Tambo", "Fecha", "lab_index"], how="left")
                     
         if "UFC_Val" in df: df["UFC"] = df["UFC_Val"].combine_first(df["UFC"])
         if "SCC_Val" in df: df["SCC"] = df["SCC_Val"].combine_first(df["SCC"])
 
+    # --- CORRECCIÓN 4: Eliminamos la columna auxiliar lab_index ---
     df = df.drop(columns=["lab_index"], errors="ignore")
 
     df["Fecha_Cierre_Viernes"] = df["Fecha"] + pd.to_timedelta((4 - df["Fecha"].dt.weekday) % 7, unit="D")
@@ -1056,6 +1067,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_m_disp["Litros"] = df_m_disp["Litros_Ticket"].apply(formato_miles)
             df_m_disp["Temperatura"] = df_m_disp["Temperatura"].apply(lambda x: f"{x:.1f}°" if pd.notna(x) else "-")
             
+            # Formateo in situ para no perder el formato porcentual en el PDF
             if "Grasa" in df_m_disp: df_m_disp["Grasa"] = df_m_disp["Grasa"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Proteina" in df_m_disp: df_m_disp["Proteina"] = df_m_disp["Proteina"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
             if "Crioscopia" in df_m_disp: df_m_disp["Crioscopia"] = df_m_disp["Crioscopia"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "-")
@@ -1063,6 +1075,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             if "UFC" in df_m_disp: df_m_disp["UFC <200"] = df_m_disp["UFC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             if "SCC" in df_m_disp: df_m_disp["SCC <400"] = df_m_disp["SCC"].apply(lambda x: formato_miles(x) if pd.notna(x) else "-")
             
+            # Renombres solo para la interfaz visual
             df_m_disp_visual = df_m_disp.rename(columns={
                 "Num_Tambo": "Num Tambo",
                 "Proteina": "Proteína",
@@ -1089,6 +1102,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             st.dataframe(df_style, use_container_width=True, hide_index=True)
 
             st.markdown("---")
+            # Preparación exclusiva para PDF
             df_pdf_rec = df_m_disp.copy()
             if "UFC" in df_pdf_rec.columns: 
                 df_pdf_rec = df_pdf_rec.drop(columns=["UFC"])
@@ -1228,6 +1242,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     f_anio_p = st.sidebar.selectbox("Año Producción", ["Todos"] + anios_p, key="p_anio_coop")
     f_mes_p = st.sidebar.selectbox("Mes Producción", ["Todos"] + list(range(1, 13)), key="p_mes_coop")
     
+    # NUEVO: Checkbox para controlar la vista de sólidos
     ver_solidos = st.sidebar.checkbox("Ver Ratio de Sólidos y Conversión", value=True)
 
     df_p_filtered = df_prod_coop.copy()
@@ -1260,6 +1275,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
 
     st.subheader("Detalle de Lotes de Producción Coopagro")
     if not df_p_filtered.empty:
+        # --- INICIO LÓGICA DE SÓLIDOS Y CONVERSIÓN ---
         df_p_show = df_p_filtered.copy()
         df_p_show['Fecha_Dt'] = df_p_show['Fecha']
         df_p_show['Fecha'] = df_p_show['Fecha_Dt'].dt.strftime('%d/%m/%Y')
@@ -1282,6 +1298,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
             df_solidos = df_lab.groupby('Fecha_Recepcion')[[col_fat, col_prot]].mean().reset_index()
             df_solidos['Solidos_Utiles'] = df_solidos[col_fat] + df_solidos[col_prot]
             
+            # Desfase: Leche recibida ayer -> Producción de hoy (+1 día)
             df_solidos['Fecha_Produccion_Asociada'] = df_solidos['Fecha_Recepcion'] + pd.Timedelta(days=1)
             
             df_p_show = pd.merge(df_p_show, df_solidos[['Fecha_Produccion_Asociada', 'Solidos_Utiles']], 
@@ -1304,12 +1321,15 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
         df_p_show['PNC'] = df_p_show['PNC'].apply(formato_miles)
         df_p_show['Rendimiento Lote'] = df_p_show.apply(lambda x: f"{(x['PT_Total_Lote'] / x['Litros Procesados Num'] * 100):.2f}%" if x['Litros Procesados Num'] > 0 else "0.00%", axis=1)
         
+        # NUEVO: Armado condicional de columnas para la tabla web
         cols_visuales = ['Fecha', 'Lote', 'Producto', 'Litros Procesados', 'Producto Terminado', 'PNC', 'Rendimiento Lote']
         if ver_solidos:
             cols_visuales.extend(['% Sólidos (Día -1)', 'Conversión (Kg/Kg)'])
             
         st.dataframe(df_p_show[cols_visuales], use_container_width=True, hide_index=True)
+        # --- FIN LÓGICA DE SÓLIDOS Y CONVERSIÓN ---
         
+        # NUEVO: Columnas base del PDF
         headers_pdf_c = [("Fecha", 20), ("Lote", 25), ("Producto", 45), ("Litros", 20), ("Prod.", 20), ("Rend.", 15)]
         mapeo_pdf_c = [
             lambda r: r.Fecha if pd.notna(r.Fecha) else "",
@@ -1320,6 +1340,7 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
             lambda r: str(r.Rendimiento_Lote)
         ]
         
+        # NUEVO: Se agregan las columnas de sólidos y conversión solo si están marcadas
         if ver_solidos:
             headers_pdf_c.extend([("Sólidos", 15), ("Conv.", 15)])
             mapeo_pdf_c.extend([
@@ -1651,3 +1672,4 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     except Exception as e:
         st.error(f"Error procesando el módulo de insumos: {e}")
         st.code(traceback.format_exc())
+
