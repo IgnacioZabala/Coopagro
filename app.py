@@ -1100,7 +1100,24 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             cols_disponibles = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura", "Grasa", "Proteína", "% Sólidos Útiles", "Kg Sólidos Útiles", "Crioscopía", "UFC <200", "SCC <400"]
             cols_finales = [c for c in cols_disponibles if c in df_m_disp.columns]
             
-            st.dataframe(df_m_disp[cols_finales], use_container_width=True, hide_index=True)
+            # --- MODIFICACIÓN: Color rojo en la app web ---
+            def highlight_bacsomatic_mastellone(val, threshold):
+                try:
+                    if pd.notna(val) and str(val) != "-":
+                        num_val = float(str(val).replace(".", "").replace(",", "."))
+                        if num_val > threshold: return 'color: red; font-weight: bold'
+                except: pass
+                return ''
+
+            df_style_m = df_m_disp[cols_finales].style
+            if "UFC <200" in cols_finales:
+                df_style_m = df_style_m.map(lambda x: highlight_bacsomatic_mastellone(x, 200), subset=["UFC <200"])
+            if "SCC <400" in cols_finales:
+                df_style_m = df_style_m.map(lambda x: highlight_bacsomatic_mastellone(x, 400), subset=["SCC <400"])
+
+            st.dataframe(df_style_m, use_container_width=True, hide_index=True)
+            # ----------------------------------------------
+            
             st.caption("* Indica uso de densidad estándar (1.030 kg/L).")
 
             st.markdown("---")
@@ -1118,8 +1135,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 lambda r: str(getattr(r, "Proteína", "-")),
                 lambda r: str(getattr(r, "% Sólidos Útiles", "-")),
                 lambda r: str(getattr(r, "Kg Sólidos Útiles", "-")).replace(" kg", ""),
-                lambda r: str(getattr(r, "UFC", "-")),
-                lambda r: str(getattr(r, "SCC", "-"))
+                
+                # --- MODIFICACIÓN: Corrección formato en el PDF para evitar números disparados ---
+                lambda r: formato_miles(getattr(r, "UFC", pd.NA)) if pd.notna(getattr(r, "UFC", pd.NA)) else "-",
+                lambda r: formato_miles(getattr(r, "SCC", pd.NA)) if pd.notna(getattr(r, "SCC", pd.NA)) else "-"
+                # ---------------------------------------------------------------------------------
             ]
             
             mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
