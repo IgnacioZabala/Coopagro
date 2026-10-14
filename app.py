@@ -1197,7 +1197,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             st.info("No hay registros de recepción MHSA para el período seleccionado.")
 
     with tab2:
-        st.subheader("Registro de Lotes Fasón (Mastellone - Código 840)")
+        st.subheader("Registro de Lotes Fasón (Mastellone - Códigos 840 y 990)")
         if not df_consolidado.empty:
             df_c_disp = df_consolidado.copy()
             df_c_disp["Fecha"] = df_c_disp["Fecha"].dt.strftime("%d/%m/%Y")
