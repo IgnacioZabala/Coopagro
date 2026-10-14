@@ -180,9 +180,10 @@ def clasificar_lote_general(lote_str):
       "125": "Muzarrella Piano",
       "488": "Tybo Coop.",
       "840": "Muzzarella Exportacion Mastellone",
+      "990": "Muzzarella Mercado Interno Mastellone",
   }
   prod_nombre = mapping_prod.get(prod_code, f"Producto ({prod_code})")
-  grupo = "Mastellone" if prod_code == "840" else "Coopagro"
+  grupo = "Mastellone" if prod_code in ["840", "990"] else "Coopagro"
   return prod_nombre, grupo
 
 # =========================================================================
@@ -704,28 +705,18 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
     elif vista_coop == "Gestión y Reportes por Tambo":
       st.header("📄 Reportes por Tambo")
-      tipo_reporte_opcion = st.sidebar.radio("Período de Reporte:", ["Semanal", "Mensual", "Rango de Fechas"])
+      tipo_reporte_opcion = st.sidebar.radio("Período de Reporte:", ["Semanal", "Mensual"])
       
       if tipo_reporte_opcion == "Semanal":
         ciclos = df[["Fecha_Cierre_Viernes", "Ciclo_Semana"]].drop_duplicates().sort_values("Fecha_Cierre_Viernes", ascending=False)["Ciclo_Semana"].tolist()
         periodo_sel = st.sidebar.selectbox("1. Seleccione Semana:", ciclos) if ciclos else ""
         df_periodo = df[df["Ciclo_Semana"] == periodo_sel].sort_values(["Fecha", "N_Remito"]) if ciclos else pd.DataFrame()
         es_mensual = False
-      elif tipo_reporte_opcion == "Mensual":
+      else:
         meses = sorted(df["AnioMes"].unique(), reverse=True)
         periodo_sel = st.sidebar.selectbox("1. Seleccione Mes:", meses, format_func=lambda p: f"{MESES_ES.get(p.month)} {p.year}") if meses else None
         df_periodo = df[df["AnioMes"] == periodo_sel].sort_values(["Fecha", "N_Remito"]) if meses else pd.DataFrame()
         es_mensual = True
-      else:
-        fechas_sel = st.sidebar.date_input("1. Seleccione Rango:", [])
-        if len(fechas_sel) == 2:
-            fecha_inicio, fecha_fin = fechas_sel
-            mask = (df["Fecha"].dt.date >= fecha_inicio) & (df["Fecha"].dt.date <= fecha_fin)
-            df_periodo = df[mask].sort_values(["Fecha", "N_Remito"])
-        else:
-            df_periodo = pd.DataFrame()
-            st.sidebar.warning("Por favor seleccione fecha de inicio y fin.")
-        es_mensual = False
       
       st.sidebar.subheader("⚙️ Elementos del Reporte")
       v_temp = st.sidebar.checkbox("Temperatura", True)
@@ -754,22 +745,16 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 if df_t_loop.empty: continue
                 t_nom_loop = df_t_loop["Tambo"].iloc[0]
                 
-                if tipo_reporte_opcion == "Mensual":
+                if es_mensual:
                   periodo_str_pdf = f"{MESES_ES.get(periodo_sel.month)} {periodo_sel.year}"
                   tipo_str = "INTERNO" if es_interno_zip else "mensual"
                   nom_arch = f"Reporte {tipo_str} {t_nom_loop} - {periodo_str_pdf}.pdf"
-                elif tipo_reporte_opcion == "Semanal":
+                else:
                   f_ini = df_t_loop['Fecha_Inicio_Sabado'].iloc[0]
                   f_fin = df_t_loop['Fecha_Cierre_Viernes'].iloc[0]
                   periodo_str_pdf = f"{f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y}"
                   tipo_str = "INTERNO" if es_interno_zip else "semanal"
                   nom_arch = f"Reporte {tipo_str} {t_nom_loop} - Semana {f_ini:%d-%m} al {f_fin:%d-%m}.pdf" 
-                else:
-                  f_ini = fecha_inicio.strftime('%d/%m/%Y')
-                  f_fin = fecha_fin.strftime('%d/%m/%Y')
-                  periodo_str_pdf = f"{f_ini} al {f_fin}"
-                  tipo_str = "INTERNO" if es_interno_zip else "personalizado"
-                  nom_arch = f"Reporte {tipo_str} {t_nom_loop} - {fecha_inicio.strftime('%d-%m')} al {fecha_fin.strftime('%d-%m')}.pdf"
                   
                 pdf_bytes_loop = generar_pdf_bytes(df_t_loop, t_nom_loop, t_id, periodo_str_pdf, args_vis, es_mensual, es_interno=es_interno_zip)
                 zip_file.writestr(nom_arch, pdf_bytes_loop)
@@ -777,7 +762,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
             st.download_button(
                 label="📥 Descargar Archivo ZIP",
                 data=zip_buffer.getvalue(),
-                file_name=f"Reportes_{'Internos' if es_interno_zip else 'Productores'}_{'Mensuales' if es_mensual else 'Seleccionados'}.zip",
+                file_name=f"Reportes_{'Internos' if es_interno_zip else 'Productores'}_{'Mensuales' if es_mensual else 'Semanales'}.zip",
                 mime="application/zip",
                 type="primary"
             )
@@ -797,27 +782,18 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           df_per["Uso_Estandar"] = df_per["Densidad"].isna() | (df_per["Densidad"] <= 0)
           df_per["Kg_SU"] = df_per["Litros_Ticket"] * df_per["Densidad_Calc"] * (df_per["Porcentaje_SU"] / 100)
           
-          if tipo_reporte_opcion == "Mensual":
+          if es_mensual:
             periodo_pdf = f"{MESES_ES.get(periodo_sel.month)} {periodo_sel.year}"
             nom_arch_prod = f"Reporte mensual {t_nombre} - {periodo_pdf}.pdf"
             nom_arch_int = f"Reporte INTERNO {t_nombre} - {periodo_pdf}.pdf"
-            titulo_vista = f"Resumen Mensual - {t_nombre} (#{t_id})"
-          elif tipo_reporte_opcion == "Semanal":
+          else:
             f_ini = df_per['Fecha_Inicio_Sabado'].iloc[0]
             f_fin = df_per['Fecha_Cierre_Viernes'].iloc[0]
             periodo_pdf = f"{f_ini:%d/%m/%Y} al {f_fin:%d/%m/%Y}"
             nom_arch_prod = f"Reporte semanal {t_nombre} - Semana {f_ini:%d-%m} al {f_fin:%d-%m}.pdf"
             nom_arch_int = f"Reporte INTERNO {t_nombre} - Semana {f_ini:%d-%m} al {f_fin:%d-%m}.pdf"
-            titulo_vista = f"Resumen Semanal - {t_nombre} (#{t_id})"
-          else:
-            f_ini = fecha_inicio.strftime('%d/%m/%Y')
-            f_fin = fecha_fin.strftime('%d/%m/%Y')
-            periodo_pdf = f"{f_ini} al {f_fin}"
-            nom_arch_prod = f"Reporte {t_nombre} - {fecha_inicio.strftime('%d-%m')} al {fecha_fin.strftime('%d-%m')}.pdf"
-            nom_arch_int = f"Reporte INTERNO {t_nombre} - {fecha_inicio.strftime('%d-%m')} al {fecha_fin.strftime('%d-%m')}.pdf"
-            titulo_vista = f"Resumen Personalizado - {t_nombre} (#{t_id})"
 
-          st.markdown(f"**{titulo_vista}**")
+          st.markdown(f"**Resumen {'Mensual' if es_mensual else 'Semanal'} - {t_nombre} (#{t_id})**")
           
           pdf_b_productor = generar_pdf_bytes(df_per, t_nombre, t_id, periodo_pdf, args_vis, es_mensual, es_interno=False)
           pdf_b_interno = generar_pdf_bytes(df_per, t_nombre, t_id, periodo_pdf, args_vis, es_mensual, es_interno=True)
@@ -938,8 +914,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
       df_prod["Lote"] = raw_prod.iloc[:, 1]
       df_prod["Litros Procesados"] = raw_prod.iloc[:, 3]
-      df_prod["Producto Terminado"] = raw_prod.iloc[:, 5]
-      df_prod["PNC"] = raw_prod.iloc[:, 6]
+      df_prod["Producto Terminado"] = raw_prod.iloc[:, 4]
+      df_prod["PNC"] = raw_prod.iloc[:, 5]
       df_prod = df_prod.dropna(subset=["Fecha", "Lote"])
       
       df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
@@ -1260,8 +1236,8 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       df_prod['Fecha'] = raw_prod.iloc[:, 0]
       df_prod['Lote'] = raw_prod.iloc[:, 1]
       df_prod['Litros Procesados'] = raw_prod.iloc[:, 3]
-      df_prod['Producto Terminado'] = raw_prod.iloc[:, 5]
-      df_prod['PNC'] = raw_prod.iloc[:, 6]
+      df_prod['Producto Terminado'] = raw_prod.iloc[:, 4]
+      df_prod['PNC'] = raw_prod.iloc[:, 5]
       df_prod = df_prod.dropna(subset=['Fecha', 'Lote'])
       
       df_prod['Fecha'] = pd.to_datetime(df_prod['Fecha'], format="mixed", dayfirst=True, errors='coerce')
@@ -1573,8 +1549,8 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 df_p_ins['Fecha'] = pd.to_datetime(raw_p_ins.iloc[:, 0], format="mixed", dayfirst=True, errors='coerce')
                 df_p_ins['Lote'] = raw_p_ins.iloc[:, 1]
                 df_p_ins['Litros Procesados'] = pd.to_numeric(raw_p_ins.iloc[:, 3], errors='coerce').fillna(0)
-                df_p_ins['Prod Terminado'] = pd.to_numeric(raw_p_ins.iloc[:, 5], errors='coerce').fillna(0)
-                df_p_ins['PNC'] = pd.to_numeric(raw_p_ins.iloc[:, 6], errors='coerce').fillna(0)
+                df_p_ins['Prod Terminado'] = pd.to_numeric(raw_p_ins.iloc[:, 4], errors='coerce').fillna(0)
+                df_p_ins['PNC'] = pd.to_numeric(raw_p_ins.iloc[:, 5], errors='coerce').fillna(0)
                 df_p_ins = df_p_ins.dropna(subset=['Fecha', 'Lote'])
                 
                 _, df_p_ins['Grupo'] = zip(*df_p_ins['Lote'].apply(clasificar_lote_general))
