@@ -1100,7 +1100,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             cols_disponibles = ["Fecha", "Num Tambo", "Tambo", "Litros", "Temperatura", "Grasa", "Proteína", "% Sólidos Útiles", "Kg Sólidos Útiles", "Crioscopía", "UFC <200", "SCC <400"]
             cols_finales = [c for c in cols_disponibles if c in df_m_disp.columns]
             
-            # --- MODIFICACIÓN: Color rojo en la app web ---
             def highlight_bacsomatic_mastellone(val, threshold):
                 try:
                     if pd.notna(val) and str(val) != "-":
@@ -1116,30 +1115,36 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 df_style_m = df_style_m.map(lambda x: highlight_bacsomatic_mastellone(x, 400), subset=["SCC <400"])
 
             st.dataframe(df_style_m, use_container_width=True, hide_index=True)
-            # ----------------------------------------------
-            
             st.caption("* Indica uso de densidad estándar (1.030 kg/L).")
 
             st.markdown("---")
             df_pdf_rec = df_m_disp.copy()
-            df_pdf_rec = df_pdf_rec.rename(columns={"UFC <200": "UFC", "SCC <400": "SCC"})
+            
+            # 1. Renombramos las columnas a nombres válidos para Python (sin espacios ni símbolos)
+            df_pdf_rec = df_pdf_rec.rename(columns={
+                "Num Tambo": "Num_Tambo",
+                "Proteína": "Proteina",
+                "% Sólidos Útiles": "Porcentaje_SU_Str",
+                "Kg Sólidos Útiles": "Kg_SU_Str",
+                "UFC <200": "UFC", 
+                "SCC <400": "SCC"
+            })
             
             headers_pdf_rec = [("Fecha", 20), ("Código", 16), ("Tambo", 30), ("Litros", 16), ("Temp", 12), ("Grasa", 14), ("Prot", 14), ("% SU", 14), ("Kg SU", 18), ("UFC", 18), ("SCC", 18)]
+            
+            # 2. Actualizamos el mapeo para usar los nuevos nombres seguros
             mapeo_pdf_rec = [
                 lambda r: str(getattr(r, "Fecha", "")),
-                lambda r: str(getattr(r, "Num Tambo", "-")),
+                lambda r: str(getattr(r, "Num_Tambo", "-")),
                 lambda r: str(getattr(r, "Tambo", "-"))[:16],
                 lambda r: str(getattr(r, "Litros", "0")),
                 lambda r: str(getattr(r, "Temperatura", "-")),
                 lambda r: str(getattr(r, "Grasa", "-")),
-                lambda r: str(getattr(r, "Proteína", "-")),
-                lambda r: str(getattr(r, "% Sólidos Útiles", "-")),
-                lambda r: str(getattr(r, "Kg Sólidos Útiles", "-")).replace(" kg", ""),
-                
-                # --- MODIFICACIÓN: Corrección formato en el PDF para evitar números disparados ---
+                lambda r: str(getattr(r, "Proteina", "-")),
+                lambda r: str(getattr(r, "Porcentaje_SU_Str", "-")),
+                lambda r: str(getattr(r, "Kg_SU_Str", "-")).replace(" kg", ""),
                 lambda r: formato_miles(getattr(r, "UFC", pd.NA)) if pd.notna(getattr(r, "UFC", pd.NA)) else "-",
                 lambda r: formato_miles(getattr(r, "SCC", pd.NA)) if pd.notna(getattr(r, "SCC", pd.NA)) else "-"
-                # ---------------------------------------------------------------------------------
             ]
             
             mes_str = MESES_ES.get(filtro_mes, str(filtro_mes)) if filtro_mes != "Todos" else "Todos"
