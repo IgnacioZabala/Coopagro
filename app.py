@@ -813,7 +813,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
             f_ini = fecha_inicio.strftime('%d/%m/%Y')
             f_fin = fecha_fin.strftime('%d/%m/%Y')
             periodo_pdf = f"{f_ini} al {f_fin}"
-            nom_arch_prod = f"Reporte personalizado {t_nombre} - {fecha_inicio.strftime('%d-%m')} al {fecha_fin.strftime('%d-%m')}.pdf"
+            nom_arch_prod = f"Reporte {t_nombre} - {fecha_inicio.strftime('%d-%m')} al {fecha_fin.strftime('%d-%m')}.pdf"
             nom_arch_int = f"Reporte INTERNO {t_nombre} - {fecha_inicio.strftime('%d-%m')} al {fecha_fin.strftime('%d-%m')}.pdf"
             titulo_vista = f"Resumen Personalizado - {t_nombre} (#{t_id})"
 
