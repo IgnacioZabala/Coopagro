@@ -757,33 +757,150 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
       if not df_macro.empty:
         st.subheader("Ranking y Calidad por Tambo")
 
-        # 1. Obtener lista de tambos disponibles en el período
-        lista_tambos_disponibles = sorted(
-            df_macro["Num_Tambo"].astype(str).unique().tolist()
+        # 1. Agrupar datos base por tambo
+        base_ranking = []
+        for (num_t, tambo_n), group in df_macro.groupby(["Num_Tambo", "Tambo"]):
+          tot_l = group["Litros_Ticket"].sum()
+          g_pond = calcular_promedio_ponderado(group, "Grasa")
+          p_pond = calcular_promedio_ponderado(group, "Proteina")
+
+          g_val = g_pond if pd.notna(g_pond) else 0
+          p_val = p_pond if pd.notna(p_pond) else 0
+          porcentaje_su = g_val + p_val
+
+          d_pond = (
+              calcular_promedio_ponderado(group, "Densidad")
+              if "Densidad" in group.columns
+              else float("nan")
+          )
+
+          uso_estandar = False
+          if pd.isna(d_pond) or d_pond <= 0:
+            densidad_calc = 1.030
+            uso_estandar = True
+          else:
+            densidad_calc = d_pond
+
+          kg_solidos_utiles = (
+              tot_l * densidad_calc * (porcentaje_su / 100)
+              if porcentaje_su > 0
+              else 0
+          )
+
+          base_ranking.append({
+              "Num_Tambo": str(num_t),
+              "Tambo": str(tambo_n),
+              "Litros_Ticket": tot_l,
+              "Grasa_Ponderada": g_pond,
+              "Proteina_Ponderada": p_pond,
+              "Porcentaje_SU": porcentaje_su,
+              "Kg_Solidos_Utiles_Num": kg_solidos_utiles,
+              "Uso_Estandar": uso_estandar,
+          })
+
+        df_base = pd.DataFrame(base_ranking).sort_values(
+            "Litros_Ticket", ascending=False
         )
 
-        dict_nombres_tambos = (
-            df_macro.groupby("Num_Tambo")["Tambo"].first().to_dict()
+        # 2. Inicializar estado de selección en session_state por período
+        state_key = f"selected_tambos_{periodo_texto}"
+        if state_key not in st.session_state:
+          st.session_state[state_key] = set(df_base["Num_Tambo"])
+
+        # Botones de acción rápida para marcar/desmarcar todos
+        btn_col1, btn_col2, _ = st.columns([1.5, 1.5, 7])
+        with btn_col1:
+          if st.button("✅ Seleccionar todos"):
+            st.session_state[state_key] = set(df_base["Num_Tambo"])
+            st.rerun()
+        with btn_col2:
+          if st.button("❌ Desmarcar todos"):
+            st.session_state[state_key] = set()
+            st.rerun()
+
+        # 3. Preparar DataFrame con columna de casillas de verificación
+        df_editor_prep = df_base.copy()
+        df_editor_prep["Incluir"] = df_editor_prep["Num_Tambo"].isin(
+            st.session_state[state_key]
+        )
+        df_editor_prep["Litros_Fmt"] = df_editor_prep["Litros_Ticket"].apply(
+            formato_miles
+        )
+        df_editor_prep["Grasa_Fmt"] = df_editor_prep["Grasa_Ponderada"].apply(
+            lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D"
+        )
+        df_editor_prep["Prot_Fmt"] = df_editor_prep["Proteina_Ponderada"].apply(
+            lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D"
+        )
+        df_editor_prep["SU_Fmt"] = df_editor_prep["Porcentaje_SU"].apply(
+            lambda x: f"{x:.2f}%".replace(".", ",") if x > 0 else "S/D"
+        )
+        df_editor_prep["Kg_SU_Fmt"] = df_editor_prep.apply(
+            lambda r: formato_kg_arg(
+                r["Kg_Solidos_Utiles_Num"], r["Uso_Estandar"]
+            ),
+            axis=1,
         )
 
-        tambos_seleccionados = st.multiselect(
-            "Seleccionar tambos para el cálculo y exportación:",
-            options=lista_tambos_disponibles,
-            default=lista_tambos_disponibles,
-            format_func=lambda code: f"{dict_nombres_tambos.get(code, code)} ({code})",
+        # Mostrar tabla interactiva st.data_editor con casillas
+        edited_df = st.data_editor(
+            df_editor_prep[[
+                "Incluir",
+                "Num_Tambo",
+                "Tambo",
+                "Litros_Fmt",
+                "Grasa_Fmt",
+                "Prot_Fmt",
+                "SU_Fmt",
+                "Kg_SU_Fmt",
+            ]].rename(columns={
+                "Num_Tambo": "Código",
+                "Tambo": "Nombre del Tambo",
+                "Litros_Fmt": "Litros Totales",
+                "Grasa_Fmt": "Grasa Pond.",
+                "Prot_Fmt": "Proteína Pond.",
+                "SU_Fmt": "% Sólidos Útiles",
+                "Kg_SU_Fmt": "Total Sólidos (Kg)",
+            }),
+            column_config={
+                "Incluir": st.column_config.CheckboxColumn(
+                    "Calcular / Exportar",
+                    help="Tilde o destilde para incluir en el cálculo y PDF",
+                    default=True,
+                )
+            },
+            disabled=[
+                "Código",
+                "Nombre del Tambo",
+                "Litros Totales",
+                "Grasa Pond.",
+                "Proteína Pond.",
+                "% Sólidos Útiles",
+                "Total Sólidos (Kg)",
+            ],
+            hide_index=True,
+            use_container_width=True,
+            key=f"editor_{periodo_texto}",
         )
 
-        # 2. Filtrar DataFrame del período según la selección
+        # Guardar casillas tildadas
+        tambos_tildados = set(
+            edited_df[edited_df["Incluir"] == True]["Código"]
+        )
+        st.session_state[state_key] = tambos_tildados
+
+        # 4. Filtrar datos según las casillas seleccionadas
         df_macro_filtrado = df_macro[
-            df_macro["Num_Tambo"].astype(str).isin(tambos_seleccionados)
+            df_macro["Num_Tambo"].astype(str).isin(tambos_tildados)
         ].copy()
+        df_ranking = df_base[df_base["Num_Tambo"].isin(tambos_tildados)].copy()
 
         if df_macro_filtrado.empty:
           st.warning(
-              "Por favor, seleccione al menos un tambo para visualizar y calcular los datos."
+              "Seleccione al menos un tambo en el checklist para calcular y exportar los datos."
           )
         else:
-          # 3. Recalcular métricas generales según tambos elegidos
+          # 5. Recalcular métricas generales
           tot_litros = df_macro_filtrado["Litros_Ticket"].sum()
           grasa_p = calcular_promedio_ponderado(df_macro_filtrado, "Grasa")
           prot_p = calcular_promedio_ponderado(df_macro_filtrado, "Proteina")
@@ -791,6 +908,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
               grasa_p / prot_p if (prot_p and prot_p > 0) else float("nan")
           )
 
+          st.markdown("---")
+          st.markdown("##### 📈 Totales y Promedios Ponderados (Seleccionados)")
           c1, c2, c3, c4, c5 = st.columns(5)
           c1.metric("Litros Totales", formato_miles(tot_litros))
           c2.metric(
@@ -822,54 +941,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
               ),
           )
 
-          # 4. Generar tabla de ranking solo con los tambos seleccionados
-          ranking_data = []
-          for (num_t, tambo_n), group in df_macro_filtrado.groupby(
-              ["Num_Tambo", "Tambo"]
-          ):
-            tot_l = group["Litros_Ticket"].sum()
-            g_pond = calcular_promedio_ponderado(group, "Grasa")
-            p_pond = calcular_promedio_ponderado(group, "Proteina")
-
-            g_val = g_pond if pd.notna(g_pond) else 0
-            p_val = p_pond if pd.notna(p_pond) else 0
-            porcentaje_su = g_val + p_val
-
-            d_pond = (
-                calcular_promedio_ponderado(group, "Densidad")
-                if "Densidad" in group.columns
-                else float("nan")
-            )
-
-            uso_estandar = False
-            if pd.isna(d_pond) or d_pond <= 0:
-              densidad_calc = 1.030
-              uso_estandar = True
-            else:
-              densidad_calc = d_pond
-
-            kg_solidos_utiles = (
-                tot_l * densidad_calc * (porcentaje_su / 100)
-                if porcentaje_su > 0
-                else 0
-            )
-
-            ranking_data.append({
-                "Num_Tambo": str(num_t),
-                "Tambo": str(tambo_n),
-                "Litros_Ticket": tot_l,
-                "Grasa_Ponderada": g_pond,
-                "Proteina_Ponderada": p_pond,
-                "Porcentaje_SU": porcentaje_su,
-                "Kg_Solidos_Utiles_Num": kg_solidos_utiles,
-                "Uso_Estandar": uso_estandar,
-            })
-
-          df_ranking = pd.DataFrame(ranking_data).sort_values(
-              "Litros_Ticket", ascending=False
-          )
-
-          # 5. Generación del PDF (solamente incluirá los tambos en df_ranking)
+          # 6. Generación de PDF
           def generar_pdf_panel_general_con_calidad(
               df_macro,
               periodo_titulo,
@@ -964,7 +1036,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
               grasa_p,
               prot_p,
               ratio_gp,
-              len(tambos_seleccionados),
+              len(tambos_tildados),
               df_ranking,
           )
 
@@ -975,59 +1047,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                   f"Informe_Calidad_Interno_{periodo_texto.replace(' ', '_')}.pdf"
               ),
               mime="application/pdf",
-          )
-
-          df_ranking_show = df_ranking.copy()
-          df_ranking_show["Litros_Ticket"] = df_ranking_show[
-              "Litros_Ticket"
-          ].apply(formato_miles)
-          df_ranking_show["Grasa_Ponderada"] = df_ranking_show[
-              "Grasa_Ponderada"
-          ].apply(
-              lambda x: (
-                  f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D"
-              )
-          )
-          df_ranking_show["Proteina_Ponderada"] = df_ranking_show[
-              "Proteina_Ponderada"
-          ].apply(
-              lambda x: (
-                  f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D"
-              )
-          )
-          df_ranking_show["Porcentaje_SU"] = df_ranking_show[
-              "Porcentaje_SU"
-          ].apply(
-              lambda x: f"{x:.2f}%".replace(".", ",") if x > 0 else "S/D"
-          )
-
-          df_ranking_show["Kg_Solidos_Utiles"] = df_ranking_show.apply(
-              lambda r: formato_kg_arg(
-                  r["Kg_Solidos_Utiles_Num"], r["Uso_Estandar"]
-              ),
-              axis=1,
-          )
-
-          st.dataframe(
-              df_ranking_show.rename(columns={
-                  "Tambo": "Nombre del Tambo",
-                  "Num_Tambo": "Código",
-                  "Litros_Ticket": "Litros Totales",
-                  "Grasa_Ponderada": "Grasa Pond.",
-                  "Proteina_Ponderada": "Proteína Pond.",
-                  "Porcentaje_SU": "% Sólidos Útiles",
-                  "Kg_Solidos_Utiles": "Total Sólidos (Kg)",
-              })[[
-                  "Código",
-                  "Nombre del Tambo",
-                  "Litros Totales",
-                  "Grasa Pond.",
-                  "Proteína Pond.",
-                  "% Sólidos Útiles",
-                  "Total Sólidos (Kg)",
-              ]],
-              hide_index=True,
-              use_container_width=True,
           )
 
           st.caption(
