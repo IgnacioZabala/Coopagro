@@ -2370,5 +2370,4 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     except Exception as e:
         st.error(f"Error procesando el módulo de insumos: {e}")
         st.code(traceback.format_exc())
-```<ElicitationsGroup></ElicitationsGroup>
 
