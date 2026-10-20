@@ -280,22 +280,28 @@ def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_
       titulo = "Resumen mensual de recolección" if es_mensual else "Resumen semanal de recolección"
       
   subtitulo = f"Productor: {tambo_nombre} (Código #{tambo_id})"
-  temp_prom = df_productor["Temperatura"].mean() if "Temperatura" in df_productor else float("nan")
+  
+  temp_prom = calcular_promedio_ponderado(df_productor, "Temperatura")
+  grasa_prom = calcular_promedio_ponderado(df_productor, "Grasa")
+  prot_prom = calcular_promedio_ponderado(df_productor, "Proteina")
+  crios_prom = calcular_promedio_ponderado(df_productor, "Crioscopia")
+  ufc_prom = calcular_promedio_ponderado(df_productor, "UFC")
+  scc_prom = calcular_promedio_ponderado(df_productor, "SCC")
 
   metricas = [f"Período: {periodo_texto}", f"Total Litros: {formato_miles(df_productor['Litros_Ticket'].sum())} L"]
   if args_visibles["temp"]: metricas.append(f"Temperatura Promedio: {formato_temp(temp_prom)}")
 
   partes_solidos = []
-  if args_visibles["grasa"] and "Grasa" in df_productor and pd.notna(df_productor["Grasa"].mean()): partes_solidos.append(f"Grasa: {df_productor['Grasa'].mean():.2f}%".replace(".", ","))
-  if args_visibles["prot"] and "Proteina" in df_productor and pd.notna(df_productor["Proteina"].mean()): partes_solidos.append(f"Proteína: {df_productor['Proteina'].mean():.2f}%".replace(".", ","))
+  if args_visibles["grasa"] and pd.notna(grasa_prom): partes_solidos.append(f"Grasa: {grasa_prom:.2f}%".replace(".", ","))
+  if args_visibles["prot"] and pd.notna(prot_prom): partes_solidos.append(f"Proteína: {prot_prom:.2f}%".replace(".", ","))
   
   if es_interno:
-      su_mean = (df_productor["Grasa"].mean() if "Grasa" in df_productor else 0) + (df_productor["Proteina"].mean() if "Proteina" in df_productor else 0)
+      su_mean = (grasa_prom if pd.notna(grasa_prom) else 0) + (prot_prom if pd.notna(prot_prom) else 0)
       if su_mean > 0: partes_solidos.append(f"Sólidos Útiles: {su_mean:.2f}%".replace(".", ","))
 
-  if args_visibles["crios"] and "Crioscopia" in df_productor and pd.notna(df_productor["Crioscopia"].mean()): partes_solidos.append(f"Crioscopia: {df_productor['Crioscopia'].mean():.3f}".replace(".", ","))
-  if args_visibles["ufc"] and "UFC" in df_productor and pd.notna(df_productor["UFC"].mean()): partes_solidos.append(f"UFC <200: {formato_miles(df_productor['UFC'].mean())}")
-  if args_visibles["scc"] and "SCC" in df_productor and pd.notna(df_productor["SCC"].mean()): partes_solidos.append(f"SCC <400: {formato_miles(df_productor['SCC'].mean())}")
+  if args_visibles["crios"] and pd.notna(crios_prom): partes_solidos.append(f"Crioscopia: {crios_prom:.3f}".replace(".", ","))
+  if args_visibles["ufc"] and pd.notna(ufc_prom): partes_solidos.append(f"UFC <200: {formato_miles(ufc_prom)}")
+  if args_visibles["scc"] and pd.notna(scc_prom): partes_solidos.append(f"SCC <400: {formato_miles(scc_prom)}")
   if partes_solidos: metricas.append(f"Promedios Lab -> {' | '.join(partes_solidos)}")
 
   w_fecha, w_remito, w_litros = (18, 22, 18) if es_interno else (26, 34, 30)
@@ -905,6 +911,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         else:
           # 5. Recalcular métricas generales
           tot_litros = df_macro_filtrado["Litros_Ticket"].sum()
+          temp_p = calcular_promedio_ponderado(df_macro_filtrado, "Temperatura")
           grasa_p = calcular_promedio_ponderado(df_macro_filtrado, "Grasa")
           prot_p = calcular_promedio_ponderado(df_macro_filtrado, "Proteina")
           ratio_gp = (
@@ -917,7 +924,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
           c1.metric("Litros Totales", formato_miles(tot_litros))
           c2.metric(
               "Temp. Media",
-              formato_temp(df_macro_filtrado["Temperatura"].mean()),
+              formato_temp(temp_p),
           )
           c3.metric(
               "Grasa Ponderada",
@@ -1035,7 +1042,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
               df_macro_filtrado,
               periodo_texto,
               tot_litros,
-              df_macro_filtrado["Temperatura"].mean(),
+              temp_p,
               grasa_p,
               prot_p,
               ratio_gp,
@@ -1074,7 +1081,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
         if not df_dia.empty:
           tot_l_dia = df_dia["Litros_Ticket"].sum()
-          temp_p_dia = df_dia["Temperatura"].mean()
+          temp_p_dia = calcular_promedio_ponderado(df_dia, "Temperatura")
           grasa_p_dia = calcular_promedio_ponderado(df_dia, "Grasa")
           prot_p_dia = calcular_promedio_ponderado(df_dia, "Proteina")
 
@@ -1832,7 +1839,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             subt_rec = f"Período: {mes_str} {filtro_anio} (Interno - Con Sólidos)"
             
             tambos_activos_m = df_mhsa_f["Num_Tambo"].nunique()
-            temp_prom_m = df_mhsa_f["Temperatura"].mean() if "Temperatura" in df_mhsa_f else float("nan")
+            temp_prom_m = calcular_promedio_ponderado(df_mhsa_f, "Temperatura")
             grasa_p_m = calcular_promedio_ponderado(df_mhsa_f, "Grasa")
             prot_p_m = calcular_promedio_ponderado(df_mhsa_f, "Proteina")
             ratio_gp_m = grasa_p_m / prot_p_m if (prot_p_m and prot_p_m > 0) else pd.NA
@@ -2370,4 +2377,3 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     except Exception as e:
         st.error(f"Error procesando el módulo de insumos: {e}")
         st.code(traceback.format_exc())
-
