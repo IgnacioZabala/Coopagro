@@ -254,14 +254,17 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
           if "UFC" in col_name and num_val > 200: is_red = True
           if "SCC" in col_name and num_val > 400: is_red = True
       
+      fill_cell = False
       if is_red:
-          pdf.set_text_color(255, 0, 0)
+          pdf.set_text_color(0, 0, 0)
           pdf.set_font("Arial", "B", 8)
+          pdf.set_fill_color(255, 210, 210)
+          fill_cell = True
       else:
           pdf.set_text_color(0, 0, 0)
           pdf.set_font("Arial", "", 8)
 
-      pdf.cell(col_w, 7, val_limpio, 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
+      pdf.cell(col_w, 7, val_limpio, 1, 1 if i == len(headers_ajustados) - 1 else 0, align, fill=fill_cell)
   
   pdf.set_text_color(0, 0, 0)
 
@@ -1563,14 +1566,17 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                   if "UFC" in col_name and num_val > 200: is_red = True
                   if "SCC" in col_name and num_val > 400: is_red = True
               
+              fill_cell = False
               if is_red:
-                  pdf.set_text_color(255, 0, 0)
+                  pdf.set_text_color(0, 0, 0)
                   pdf.set_font("Arial", "B", 8)
+                  pdf.set_fill_color(255, 210, 210)
+                  fill_cell = True
               else:
                   pdf.set_text_color(0, 0, 0)
                   pdf.set_font("Arial", "", 8)
 
-              pdf.cell(col_w, 7, val_limpio, 1, 1 if i == len(headers_ajustados) - 1 else 0, align)
+              pdf.cell(col_w, 7, val_limpio, 1, 1 if i == len(headers_ajustados) - 1 else 0, align, fill=fill_cell)
 
       pdf.set_text_color(0, 0, 0)
 
@@ -2364,4 +2370,5 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     except Exception as e:
         st.error(f"Error procesando el módulo de insumos: {e}")
         st.code(traceback.format_exc())
+```<ElicitationsGroup></ElicitationsGroup>
 
