@@ -256,7 +256,7 @@ def generar_pdf_base(titulo: str, subtitulo: str, metricas: list, headers: list,
       
       fill_cell = False
       if is_red:
-          pdf.set_text_color(0, 0, 0)
+          pdf.set_text_color(255, 0, 0)
           pdf.set_font("Arial", "B", 8)
           pdf.set_fill_color(255, 210, 210)
           fill_cell = True
@@ -1568,7 +1568,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
               
               fill_cell = False
               if is_red:
-                  pdf.set_text_color(0, 0, 0)
+                  pdf.set_text_color(255, 0, 0)
                   pdf.set_font("Arial", "B", 8)
                   pdf.set_fill_color(255, 210, 210)
                   fill_cell = True
@@ -2370,4 +2370,5 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
     except Exception as e:
         st.error(f"Error procesando el módulo de insumos: {e}")
         st.code(traceback.format_exc())
+```<ElicitationsGroup></ElicitationsGroup>
 
