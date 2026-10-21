@@ -2,6 +2,8 @@ import os
 import re
 import datetime
 import traceback
+import requests
+import io
 
 from fpdf import FPDF
 import pandas as pd
@@ -55,6 +57,15 @@ REGEX_FECHA = re.compile(r"(\d{2})[-/]?(\d{2})[-/]?(\d{4})")
 # =========================================================================
 # FUNCIONES AUXILIARES BLINDADAS
 # =========================================================================
+def descargar_excel_drive(url):
+    """Descarga forzada simulando ser un navegador web para saltar restricciones de Drive"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+    }
+    respuesta = requests.get(url, headers=headers)
+    respuesta.raise_for_status()
+    return io.BytesIO(respuesta.content)
+
 def encontrar_fila_encabezado(df_temp: pd.DataFrame, palabras_clave: list) -> int:
   for row in df_temp.head(20).itertuples(index=True, name=None):
     row_str = " ".join([str(x).lower() for x in row[1:] if pd.notna(x)])
@@ -88,27 +99,32 @@ def norm_dens(val):
 def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
   df_remitos_raw, df_contactos, df_lab, df_bacsomatic = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
   try:
-    xls_remitos = pd.ExcelFile(u_remitos)
+    archivo_remitos = descargar_excel_drive(u_remitos)
+    xls_remitos = pd.ExcelFile(archivo_remitos)
     sheet_remitos = next((s for s in xls_remitos.sheet_names if "od-pro-03" in s.lower()), xls_remitos.sheet_names[0])
     sheet_contactos = next((s for s in xls_remitos.sheet_names if "codigo tambo" in s.lower().replace("ó", "o")), None)
-    df_remitos_raw = pd.read_excel(u_remitos, sheet_name=sheet_remitos, skiprows=4, usecols="B:K")
+    df_remitos_raw = pd.read_excel(xls_remitos, sheet_name=sheet_remitos, skiprows=4, usecols="B:K")
     if sheet_contactos:
-      df_contactos = pd.read_excel(u_remitos, sheet_name=sheet_contactos)
+      df_contactos = pd.read_excel(xls_remitos, sheet_name=sheet_contactos)
   except Exception as e:
     st.sidebar.warning(f"Error cargando remitos/contactos: {e}")
 
   try:
-    df_lab_temp = pd.read_excel(u_lab, header=None, nrows=20, engine='openpyxl')
+    archivo_lab = descargar_excel_drive(u_lab)
+    df_lab_temp = pd.read_excel(archivo_lab, header=None, nrows=20, engine='openpyxl')
     header_row = encontrar_fila_encabezado(df_lab_temp, ["sample", "fat", "protein", "grasa"])
-    df_lab = pd.read_excel(u_lab, header=header_row, engine='openpyxl')
+    archivo_lab.seek(0) # Retornamos el puntero al inicio para leer con el header correcto
+    df_lab = pd.read_excel(archivo_lab, header=header_row, engine='openpyxl')
     df_lab.columns = df_lab.columns.astype(str).str.strip()
   except Exception as e:
     st.sidebar.warning(f"No se pudo cargar el archivo Milko: {e}")
 
   try:
-    df_bac_temp = pd.read_excel(u_bacsomatic, header=None, nrows=20, engine='openpyxl')
+    archivo_bac = descargar_excel_drive(u_bacsomatic)
+    df_bac_temp = pd.read_excel(archivo_bac, header=None, nrows=20, engine='openpyxl')
     header_row_bac = encontrar_fila_encabezado(df_bac_temp, ["id usuario", "ufc", "scc"])
-    df_bacsomatic = pd.read_excel(u_bacsomatic, header=header_row_bac, engine='openpyxl')
+    archivo_bac.seek(0)
+    df_bacsomatic = pd.read_excel(archivo_bac, header=header_row_bac, engine='openpyxl')
     df_bacsomatic.columns = df_bacsomatic.columns.astype(str).str.strip()
   except Exception as e:
     st.sidebar.warning(f"No se pudo cargar el archivo Bacsomatic: {e}")
@@ -1594,7 +1610,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
   
   try:
     with st.spinner("Sincronizando datos de Mastellone..."):
-      xls_prod_mast = pd.ExcelFile(URL_PRODUCCION)
+      archivo_prod = descargar_excel_drive(URL_PRODUCCION)
+      xls_prod_mast = pd.ExcelFile(archivo_prod)
       hoja_prod_mast = "2026" if "2026" in xls_prod_mast.sheet_names else xls_prod_mast.sheet_names[-1]
       raw_prod = pd.read_excel(xls_prod_mast, sheet_name=hoja_prod_mast, skiprows=6)
       df_prod = pd.DataFrame()
@@ -1619,10 +1636,11 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       df_prod["Mes"] = df_prod["Fecha"].dt.month
       df_mastellone_prod = df_prod[df_prod["Grupo"] == "Mastellone"].copy()
 
-      xls_mastellone = pd.ExcelFile(URL_MASTELLONE)
+      archivo_mastellone = descargar_excel_drive(URL_MASTELLONE)
+      xls_mastellone = pd.ExcelFile(archivo_mastellone)
       sheet_mhsa = next((s for s in xls_mastellone.sheet_names if "mhsa" in s.lower()), xls_mastellone.sheet_names[1] if len(xls_mastellone.sheet_names) > 1 else xls_mastellone.sheet_names[0])
       
-      df_mhsa_raw = pd.read_excel(URL_MASTELLONE, sheet_name=sheet_mhsa)
+      df_mhsa_raw = pd.read_excel(xls_mastellone, sheet_name=sheet_mhsa)
       
       df_mhsa = pd.DataFrame()
       
@@ -1914,7 +1932,8 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
     with st.spinner("Sincronizando datos de producción y recepción Coopagro..."):
       import time
       url_prod_limpia = f"{URL_PRODUCCION}&t={int(time.time())}"
-      xls_prod = pd.ExcelFile(url_prod_limpia)
+      archivo_prod_c = descargar_excel_drive(url_prod_limpia)
+      xls_prod = pd.ExcelFile(archivo_prod_c)
       hoja_prod = "2026" if "2026" in xls_prod.sheet_names else xls_prod.sheet_names[-1]
           
       raw_prod = pd.read_excel(xls_prod, sheet_name=hoja_prod, skiprows=6)
@@ -1939,7 +1958,8 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       df_prod_coop = df_prod[df_prod['Grupo'] == 'Coopagro'].copy()
 
       url_remitos_limpia = f"{URL_REMITOS}&t={int(time.time())}"
-      xls_remitos_p = pd.ExcelFile(url_remitos_limpia)
+      archivo_remitos_p = descargar_excel_drive(url_remitos_limpia)
+      xls_remitos_p = pd.ExcelFile(archivo_remitos_p)
       hoja_remitos_p = next((s for s in xls_remitos_p.sheet_names if "od-pro-03" in s.lower()), xls_remitos_p.sheet_names[0])
       raw_recibo = pd.read_excel(xls_remitos_p, sheet_name=hoja_remitos_p, skiprows=4, usecols="B:K")
       df_recibo = pd.DataFrame()
@@ -2118,10 +2138,12 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
             import re
             
             URL_MOVIMIENTOS = f"https://docs.google.com/spreadsheets/d/{SHEET_INSUMOS_ID}/export?format=xlsx"
-            xls_movimientos = pd.ExcelFile(URL_MOVIMIENTOS)
+            archivo_movimientos = descargar_excel_drive(URL_MOVIMIENTOS)
+            xls_movimientos = pd.ExcelFile(archivo_movimientos)
             
             URL_MAESTRO = f"https://docs.google.com/spreadsheets/d/{SHEET_MAESTRO_ID}/export?format=xlsx"
-            xls_maestro = pd.ExcelFile(URL_MAESTRO)
+            archivo_maestro = descargar_excel_drive(URL_MAESTRO)
+            xls_maestro = pd.ExcelFile(archivo_maestro)
             
             sheet_maestro = next((s for s in xls_maestro.sheet_names if "maestro" in s.lower()), None)
             sheet_stock = next((s for s in xls_movimientos.sheet_names if "stock" in s.lower()), None)
@@ -2229,7 +2251,8 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
 
             tinas_mes, kilos_mes, litros_procesados_mes = 0, 0.0, 0.0
             try:
-                xls_prod_ins = pd.ExcelFile(URL_PRODUCCION)
+                archivo_prod_ins = descargar_excel_drive(URL_PRODUCCION)
+                xls_prod_ins = pd.ExcelFile(archivo_prod_ins)
                 hoja_p_ins = "2026" if "2026" in xls_prod_ins.sheet_names else xls_prod_ins.sheet_names[-1]
                 raw_p_ins = pd.read_excel(xls_prod_ins, sheet_name=hoja_p_ins, skiprows=6)
                 df_p_ins = pd.DataFrame()
