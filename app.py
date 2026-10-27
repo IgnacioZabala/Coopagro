@@ -1614,18 +1614,29 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       xls_prod_mast = pd.ExcelFile(archivo_prod)
       hoja_prod_mast = "2026" if "2026" in xls_prod_mast.sheet_names else xls_prod_mast.sheet_names[-1]
       raw_prod = pd.read_excel(xls_prod_mast, sheet_name=hoja_prod_mast, skiprows=6)
+      
+      # -------------------------------------------------------------
+      # CORRECCIÓN EN MÓDULO 2 (FASÓN)
+      # -------------------------------------------------------------
+      raw_prod.columns = raw_prod.columns.astype(str).str.strip()
+      col_l_proc = next((c for c in raw_prod.columns if 'procesados' in c.lower()), raw_prod.columns[3] if len(raw_prod.columns) > 3 else None)
+      col_pt = next((c for c in raw_prod.columns if 'terminado' in c.lower()), raw_prod.columns[4] if len(raw_prod.columns) > 4 else None)
+      col_pnc = next((c for c in raw_prod.columns if 'pnc' in c.lower() and 'dm' not in c.lower()), raw_prod.columns[5] if len(raw_prod.columns) > 5 else None)
+
       df_prod = pd.DataFrame()
       df_prod["Fecha"] = raw_prod.iloc[:, 0]
       df_prod["Lote"] = raw_prod.iloc[:, 1]
-      df_prod["Litros Procesados"] = raw_prod.iloc[:, 3]
-      df_prod["Producto Terminado"] = raw_prod.iloc[:, 4]
-      df_prod["PNC"] = raw_prod.iloc[:, 5]
+      df_prod["Litros Procesados"] = raw_prod[col_l_proc] if col_l_proc else 0
+      df_prod["Producto Terminado"] = raw_prod[col_pt] if col_pt else 0
+      df_prod["PNC"] = raw_prod[col_pnc] if col_pnc else 0
       df_prod = df_prod.dropna(subset=["Fecha", "Lote"])
       
       df_prod["Fecha"] = pd.to_datetime(df_prod["Fecha"], dayfirst=True, errors="coerce")
       df_prod = df_prod.dropna(subset=["Fecha"])
+      
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
-          df_prod[col] = pd.to_numeric(df_prod[col], errors="coerce").fillna(0)
+          df_prod[col] = pd.to_numeric(df_prod[col].astype(str).str.replace(',', '.'), errors="coerce").fillna(0)
+      # -------------------------------------------------------------
       
       if len(df_prod) > 0: 
           df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod["Lote"].astype(str).apply(clasificar_lote_general))
@@ -1938,19 +1949,28 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
           
       raw_prod = pd.read_excel(xls_prod, sheet_name=hoja_prod, skiprows=6)
       
+      # -------------------------------------------------------------
+      # CORRECCIÓN EN MÓDULO 3 (COOPAGRO)
+      # -------------------------------------------------------------
+      raw_prod.columns = raw_prod.columns.astype(str).str.strip()
+      col_l_proc = next((c for c in raw_prod.columns if 'procesados' in c.lower()), raw_prod.columns[3] if len(raw_prod.columns) > 3 else None)
+      col_pt = next((c for c in raw_prod.columns if 'terminado' in c.lower()), raw_prod.columns[4] if len(raw_prod.columns) > 4 else None)
+      col_pnc = next((c for c in raw_prod.columns if 'pnc' in c.lower() and 'dm' not in c.lower()), raw_prod.columns[5] if len(raw_prod.columns) > 5 else None)
+
       df_prod = pd.DataFrame()
       df_prod['Fecha'] = raw_prod.iloc[:, 0]
       df_prod['Lote'] = raw_prod.iloc[:, 1]
-      df_prod['Litros Procesados'] = raw_prod.iloc[:, 3]
-      df_prod['Producto Terminado'] = raw_prod.iloc[:, 4]
-      df_prod['PNC'] = raw_prod.iloc[:, 5]
+      df_prod['Litros Procesados'] = raw_prod[col_l_proc] if col_l_proc else 0
+      df_prod['Producto Terminado'] = raw_prod[col_pt] if col_pt else 0
+      df_prod['PNC'] = raw_prod[col_pnc] if col_pnc else 0
       df_prod = df_prod.dropna(subset=['Fecha', 'Lote'])
       
       df_prod['Fecha'] = pd.to_datetime(df_prod['Fecha'], format="mixed", dayfirst=True, errors='coerce')
       df_prod = df_prod.dropna(subset=['Fecha'])
       
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
-          df_prod[col] = pd.to_numeric(df_prod[col], errors='coerce').fillna(0)
+          df_prod[col] = pd.to_numeric(df_prod[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+      # -------------------------------------------------------------
 
       df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod['Lote'].apply(clasificar_lote_general))
       df_prod['Año'] = df_prod['Fecha'].dt.year
@@ -2255,13 +2275,23 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 xls_prod_ins = pd.ExcelFile(archivo_prod_ins)
                 hoja_p_ins = "2026" if "2026" in xls_prod_ins.sheet_names else xls_prod_ins.sheet_names[-1]
                 raw_p_ins = pd.read_excel(xls_prod_ins, sheet_name=hoja_p_ins, skiprows=6)
+                
+                # -------------------------------------------------------------
+                # CORRECCIÓN EN MÓDULO 4 (INSUMOS Y COSTOS)
+                # -------------------------------------------------------------
+                raw_p_ins.columns = raw_p_ins.columns.astype(str).str.strip()
+                col_l_proc = next((c for c in raw_p_ins.columns if 'procesados' in c.lower()), raw_p_ins.columns[3] if len(raw_p_ins.columns) > 3 else None)
+                col_pt = next((c for c in raw_p_ins.columns if 'terminado' in c.lower()), raw_p_ins.columns[4] if len(raw_p_ins.columns) > 4 else None)
+                col_pnc = next((c for c in raw_p_ins.columns if 'pnc' in c.lower() and 'dm' not in c.lower()), raw_p_ins.columns[5] if len(raw_p_ins.columns) > 5 else None)
+
                 df_p_ins = pd.DataFrame()
                 df_p_ins['Fecha'] = pd.to_datetime(raw_p_ins.iloc[:, 0], format="mixed", dayfirst=True, errors='coerce')
                 df_p_ins['Lote'] = raw_p_ins.iloc[:, 1]
-                df_p_ins['Litros Procesados'] = pd.to_numeric(raw_p_ins.iloc[:, 3], errors='coerce').fillna(0)
-                df_p_ins['Prod Terminado'] = pd.to_numeric(raw_p_ins.iloc[:, 4], errors='coerce').fillna(0)
-                df_p_ins['PNC'] = pd.to_numeric(raw_p_ins.iloc[:, 5], errors='coerce').fillna(0)
+                df_p_ins['Litros Procesados'] = pd.to_numeric(raw_p_ins[col_l_proc].astype(str).str.replace(',', '.'), errors='coerce').fillna(0) if col_l_proc else 0
+                df_p_ins['Prod Terminado'] = pd.to_numeric(raw_p_ins[col_pt].astype(str).str.replace(',', '.'), errors='coerce').fillna(0) if col_pt else 0
+                df_p_ins['PNC'] = pd.to_numeric(raw_p_ins[col_pnc].astype(str).str.replace(',', '.'), errors='coerce').fillna(0) if col_pnc else 0
                 df_p_ins = df_p_ins.dropna(subset=['Fecha', 'Lote'])
+                # -------------------------------------------------------------
                 
                 _, df_p_ins['Grupo'] = zip(*df_p_ins['Lote'].apply(clasificar_lote_general))
                 df_p_mes = df_p_ins[(df_p_ins['Grupo'] == 'Coopagro') & (df_p_ins['Fecha'].dt.year == filtro_anio_costo) & (df_p_ins['Fecha'].dt.month == filtro_mes_costo)]
