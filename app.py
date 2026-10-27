@@ -1897,7 +1897,7 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             df_c_disp["Producto Terminado"] = df_c_disp["Producto Terminado"].apply(formato_miles)
             st.dataframe(df_c_disp, use_container_width=True, hide_index=True)
             
-            headers_pdf = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Ratio", 15)]
+            headers_pdf = [("Fecha", 25), ("Lote", 35), ("Producto", 65), ("Litros Proc.", 25), ("Prod. Term.", 25), ("Rend.", 15)]
             mapeo_pdf = [
                 lambda r: r.Fecha if pd.notna(r.Fecha) else "",
                 lambda r: str(r.Lote),
