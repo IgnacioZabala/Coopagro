@@ -353,21 +353,33 @@ def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_
 
   if es_interno:
       headers.append(("% SU", 15))
-      mapeo.append(lambda r: f"{(getattr(r, 'Grasa', 0) or 0) + (getattr(r, 'Proteina', 0) or 0):.2f}%".replace(".", ",") if pd.notna(getattr(r, 'Grasa', pd.NA)) and pd.notna(getattr(r, 'Proteina', pd.NA)) else "-")
+      def calc_su_pct(r):
+          v_g = getattr(r, 'Grasa', pd.NA)
+          v_p = getattr(r, 'Proteina', pd.NA)
+          if pd.notna(v_g) and pd.notna(v_p):
+              return f"{(float(v_g) + float(v_p)):.2f}%".replace(".", ",")
+          return "-"
+      mapeo.append(calc_su_pct)
       
       headers.append(("Kg SU", 18))
       def calc_kg(r):
-          g = getattr(r, 'Grasa', 0) or 0
-          p = getattr(r, 'Proteina', 0) or 0
-          l = getattr(r, 'Litros_Ticket', 0) or 0
-          d = getattr(r, 'Densidad', pd.NA)
-          
-          uso_est = pd.isna(d) or d <= 0
-          d_calc = 1.030 if uso_est else d
-          su = g + p
-          
-          if su > 0: 
-              return formato_kg_arg(l * d_calc * (su/100), uso_est, con_unidad=False)
+          v_g = getattr(r, 'Grasa', pd.NA)
+          v_p = getattr(r, 'Proteina', pd.NA)
+          if pd.isna(v_g) or pd.isna(v_p):
+              return "-"
+          try:
+              g = float(v_g)
+              p = float(v_p)
+              v_l = getattr(r, 'Litros_Ticket', 0)
+              l = float(v_l) if pd.notna(v_l) else 0.0
+              v_d = getattr(r, 'Densidad', pd.NA)
+              uso_est = pd.isna(v_d) or float(v_d) <= 0
+              d_calc = 1.030 if uso_est else float(v_d)
+              su = g + p
+              if su > 0: 
+                  return formato_kg_arg(l * d_calc * (su/100), uso_est, con_unidad=False)
+          except:
+              pass
           return "-"
       mapeo.append(calc_kg)
 
