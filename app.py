@@ -309,7 +309,6 @@ def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_
     
     temp_prom = calcular_promedio_ponderado(df_productor, "Temperatura")
     
-    # Ponderación estricta excluyendo remitos sin laboratorio
     df_prod_lab = df_productor.dropna(subset=["Grasa", "Proteina"]).copy()
     grasa_prom = calcular_promedio_ponderado(df_prod_lab, "Grasa")
     prot_prom = calcular_promedio_ponderado(df_prod_lab, "Proteina")
@@ -489,7 +488,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 if col_email is not None:
                     df_contactos["Email"] = df_c_temp[col_email]
 
-        # Mapeo de las 8 columnas leídas de C:J
         df = df_raw.iloc[:, :8].copy()
         df.columns = [
             "Fecha",
@@ -812,12 +810,10 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
             if not df_macro.empty:
                 st.subheader("Ranking y Calidad por Tambo")
 
-                # 1. Agrupar datos base por tambo (Ponderación corregida exactamente igual al reporte por tambo)
                 base_ranking = []
                 for (num_t, tambo_n), group in df_macro.groupby(["Num_Tambo", "Tambo"]):
                     tot_l = group["Litros_Ticket"].sum()
                     
-                    # Filtro estricto de muestras analizadas por laboratorio
                     group_lab = group.dropna(subset=["Grasa", "Proteina"]).copy()
                     
                     g_pond = calcular_promedio_ponderado(group_lab, "Grasa")
@@ -863,12 +859,10 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                     "Litros_Ticket", ascending=False
                 )
 
-                # 2. Inicializar estado de selección en session_state por período
                 state_key = f"selected_tambos_{periodo_texto}"
                 if state_key not in st.session_state:
                     st.session_state[state_key] = set(df_base["Num_Tambo"])
 
-                # Botones de acción rápida para marcar/desmarcar todos
                 btn_col1, btn_col2, _ = st.columns([1.5, 1.5, 7])
                 with btn_col1:
                     if st.button("✅ Seleccionar todos"):
@@ -879,7 +873,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                         st.session_state[state_key] = set()
                         st.rerun()
 
-                # 3. Preparar DataFrame con columna de casillas de verificación
                 df_editor_prep = df_base.copy()
                 df_editor_prep["Incluir"] = df_editor_prep["Num_Tambo"].isin(
                     st.session_state[state_key]
@@ -903,7 +896,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                     axis=1,
                 )
 
-                # Mostrar tabla interactiva st.data_editor con casillas
                 edited_df = st.data_editor(
                     df_editor_prep[[
                         "Incluir",
@@ -944,13 +936,11 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                     key=f"editor_{periodo_texto}",
                 )
 
-                # Guardar casillas tildadas
                 tambos_tildados = set(
                     edited_df[edited_df["Incluir"] == True]["Código"]
                 )
                 st.session_state[state_key] = tambos_tildados
 
-                # 4. Filtrar datos según las casillas seleccionadas
                 df_macro_filtrado = df_macro[
                     df_macro["Num_Tambo"].astype(str).isin(tambos_tildados)
                 ].copy()
@@ -961,7 +951,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                         "Seleccione al menos un tambo en el checklist para calcular y exportar los datos."
                     )
                 else:
-                    # 5. Recalcular métricas generales del conjunto seleccionado
                     tot_litros = df_macro_filtrado["Litros_Ticket"].sum()
                     temp_p = calcular_promedio_ponderado(df_macro_filtrado, "Temperatura")
                     
@@ -1006,7 +995,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                         ),
                     )
 
-                    # 6. Generación de PDF
                     def generar_pdf_panel_general_con_calidad(
                         df_macro,
                         periodo_titulo,
@@ -1438,10 +1426,15 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 df_per = df_periodo[df_periodo["Num_Tambo"] == str(t_id)].copy()
 
                 if not df_per.empty:
-                    st.info("💡 Podés hacer doble clic en cualquier celda para corregir o poner en 0 una muestra aberrante. Los promedios y reportes PDF se recalcularán automáticamente.")
+                    st.info("💡 Las modificaciones que realices en la tabla quedan fijadas en la sesión actual.")
 
-                    df_editable = df_per[["Fecha", "N_Remito", "Litros_Ticket", "Temperatura", "Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]].copy()
-                    df_editable["Fecha_Fmt"] = df_editable["Fecha"].dt.strftime("%d/%m/%Y")
+                    key_estado_edicion = f"ediciones_tambo_{t_id}_{periodo_sel}"
+                    if key_estado_edicion not in st.session_state:
+                        df_editable_base = df_per[["Fecha", "N_Remito", "Litros_Ticket", "Temperatura", "Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]].copy()
+                        df_editable_base["Fecha_Fmt"] = df_editable_base["Fecha"].dt.strftime("%d/%m/%Y")
+                        st.session_state[key_estado_edicion] = df_editable_base
+
+                    df_editable = st.session_state[key_estado_edicion]
 
                     edited_data = st.data_editor(
                         df_editable[["Fecha_Fmt", "N_Remito", "Litros_Ticket", "Temperatura", "Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]].rename(columns={
@@ -1463,17 +1456,26 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                         },
                         hide_index=True,
                         use_container_width=True,
-                        key=f"editor_tambo_{t_id}_{periodo_sel}"
+                        key=f"editor_tambo_pers_{t_id}_{periodo_sel}"
                     )
 
-                    df_per["Litros_Ticket"] = edited_data["Litros"]
-                    df_per["Temperatura"] = edited_data["Temperatura"]
+                    df_editable["Litros_Ticket"] = edited_data["Litros"]
+                    df_editable["Temperatura"] = edited_data["Temperatura"]
+                    df_editable["Grasa"] = edited_data["Grasa"]
+                    df_editable["Proteina"] = edited_data["Proteína"]
+                    df_editable["Crioscopia"] = edited_data["Crioscopia"]
+                    df_editable["UFC"] = edited_data["UFC"]
+                    df_editable["SCC"] = edited_data["SCC"]
+                    st.session_state[key_estado_edicion] = df_editable
 
-                    df_per["Grasa"] = edited_data["Grasa"].apply(lambda x: pd.NA if pd.isna(x) or float(x) <= 0 else float(x))
-                    df_per["Proteina"] = edited_data["Proteína"].apply(lambda x: pd.NA if pd.isna(x) or float(x) <= 0 else float(x))
-                    df_per["Crioscopia"] = edited_data["Crioscopia"].apply(lambda x: pd.NA if pd.isna(x) else float(x))
-                    df_per["UFC"] = edited_data["UFC"].apply(lambda x: pd.NA if pd.isna(x) else float(x))
-                    df_per["SCC"] = edited_data["SCC"].apply(lambda x: pd.NA if pd.isna(x) else float(x))
+                    df_per["Litros_Ticket"] = df_editable["Litros_Ticket"]
+                    df_per["Temperatura"] = df_editable["Temperatura"]
+                    
+                    df_per["Grasa"] = df_editable["Grasa"].apply(lambda x: pd.NA if pd.isna(x) or float(x) < 0 else float(x))
+                    df_per["Proteina"] = df_editable["Proteina"].apply(lambda x: pd.NA if pd.isna(x) or float(x) < 0 else float(x))
+                    df_per["Crioscopia"] = df_editable["Crioscopia"].apply(lambda x: pd.NA if pd.isna(x) else float(x))
+                    df_per["UFC"] = df_editable["UFC"].apply(lambda x: pd.NA if pd.isna(x) else float(x))
+                    df_per["SCC"] = df_editable["SCC"].apply(lambda x: pd.NA if pd.isna(x) else float(x))
 
                     df_per["Porcentaje_SU"] = df_per["Grasa"].fillna(0) + df_per["Proteina"].fillna(0)
                     df_per["Densidad_Calc"] = df_per["Densidad"].fillna(1.030)
