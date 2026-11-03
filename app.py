@@ -809,6 +809,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
 
             if not df_macro.empty:
                 st.subheader("Ranking y Calidad por Tambo")
+                st.info("💡 Ahora puedes editar directamente los valores de Grasa y Proteína Ponderada en la tabla a continuación. Tus modificaciones quedarán fijadas en la sesión.")
 
                 base_ranking = []
                 for (num_t, tambo_n), group in df_macro.groupby(["Num_Tambo", "Tambo"]):
@@ -863,6 +864,22 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 if state_key not in st.session_state:
                     st.session_state[state_key] = set(df_base["Num_Tambo"])
 
+                # Estado persistente para las modificaciones manuales de grasa/proteína en el Panel General
+                key_edicion_macro = f"ediciones_macro_{periodo_texto}"
+                if key_edicion_macro not in st.session_state:
+                    df_macro_editable = df_base.copy()
+                    df_macro_editable["Grasa_Editable"] = df_macro_editable["Grasa_Ponderada"].fillna(0.0)
+                    df_macro_editable["Prot_Editable"] = df_macro_editable["Proteina_Ponderada"].fillna(0.0)
+                    st.session_state[key_edicion_macro] = df_macro_editable
+
+                # Sincronizar nuevas filas si el período cambió o se actualizaron tambos
+                df_macro_editable = st.session_state[key_edicion_macro]
+                df_base = pd.merge(df_base.drop(columns=["Grasa_Ponderada", "Proteina_Ponderada"], errors="ignore"), 
+                                   df_macro_editable[["Num_Tambo", "Grasa_Editable", "Prot_Editable"]], 
+                                   on="Num_Tambo", how="left")
+                df_base["Grasa_Ponderada"] = df_base["Grasa_Editable"]
+                df_base["Proteina_Ponderada"] = df_base["Prot_Editable"]
+
                 btn_col1, btn_col2, _ = st.columns([1.5, 1.5, 7])
                 with btn_col1:
                     if st.button("✅ Seleccionar todos"):
@@ -880,21 +897,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 df_editor_prep["Litros_Fmt"] = df_editor_prep["Litros_Ticket"].apply(
                     formato_miles
                 )
-                df_editor_prep["Grasa_Fmt"] = df_editor_prep["Grasa_Ponderada"].apply(
-                    lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D"
-                )
-                df_editor_prep["Prot_Fmt"] = df_editor_prep["Proteina_Ponderada"].apply(
-                    lambda x: f"{x:.2f}%".replace(".", ",") if pd.notna(x) else "S/D"
-                )
-                df_editor_prep["SU_Fmt"] = df_editor_prep["Porcentaje_SU"].apply(
-                    lambda x: f"{x:.2f}%".replace(".", ",") if x > 0 else "S/D"
-                )
-                df_editor_prep["Kg_SU_Fmt"] = df_editor_prep.apply(
-                    lambda r: formato_kg_arg(
-                        r["Kg_Solidos_Utiles_Num"], r["Uso_Estandar"]
-                    ),
-                    axis=1,
-                )
 
                 edited_df = st.data_editor(
                     df_editor_prep[[
@@ -902,38 +904,46 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                         "Num_Tambo",
                         "Tambo",
                         "Litros_Fmt",
-                        "Grasa_Fmt",
-                        "Prot_Fmt",
-                        "SU_Fmt",
-                        "Kg_SU_Fmt",
+                        "Grasa_Ponderada",
+                        "Proteina_Ponderada",
                     ]].rename(columns={
                         "Num_Tambo": "Código",
                         "Tambo": "Nombre del Tambo",
                         "Litros_Fmt": "Litros Totales",
-                        "Grasa_Fmt": "Grasa Pond.",
-                        "Prot_Fmt": "Proteína Pond.",
-                        "SU_Fmt": "% Sólidos Útiles",
-                        "Kg_SU_Fmt": "Total Sólidos (Kg)",
+                        "Grasa_Ponderada": "Grasa Pond. (%)",
+                        "Proteina_Ponderada": "Proteína Pond. (%)",
                     }),
                     column_config={
                         "Incluir": st.column_config.CheckboxColumn(
                             "Calcular / Exportar",
                             help="Tilde o destilde para incluir en el cálculo y PDF",
                             default=True,
-                        )
+                        ),
+                        "Grasa Pond. (%)": st.column_config.NumberColumn(format="%.2f %%", min_value=0.0, max_value=10.0, step=0.01),
+                        "Proteína Pond. (%)": st.column_config.NumberColumn(format="%.2f %%", min_value=0.0, max_value=10.0, step=0.01),
                     },
                     disabled=[
                         "Código",
                         "Nombre del Tambo",
                         "Litros Totales",
-                        "Grasa Pond.",
-                        "Proteína Pond.",
-                        "% Sólidos Útiles",
-                        "Total Sólidos (Kg)",
                     ],
                     hide_index=True,
                     use_container_width=True,
-                    key=f"editor_{periodo_texto}",
+                    key=f"editor_macro_{periodo_texto}",
+                )
+
+                # Guardar ediciones en session_state de manera persistente
+                df_macro_editable["Grasa_Editable"] = edited_df["Grasa Pond. (%)"]
+                df_macro_editable["Prot_Editable"] = edited_df["Proteína Pond. (%)"]
+                st.session_state[key_edicion_macro] = df_macro_editable
+
+                # Actualizar df_base con los valores editados y recalcular sólidos útiles y porcentajes
+                df_base["Grasa_Ponderada"] = edited_df["Grasa Pond. (%)"].apply(lambda x: pd.NA if pd.isna(x) or float(x) <= 0 else float(x))
+                df_base["Proteina_Ponderada"] = edited_df["Proteína Pond. (%)"].apply(lambda x: pd.NA if pd.isna(x) or float(x) <= 0 else float(x))
+                df_base["Porcentaje_SU"] = df_base["Grasa_Ponderada"].fillna(0) + df_base["Proteina_Ponderada"].fillna(0)
+                
+                df_base["Kg_Solidos_Utiles_Num"] = df_base.apply(
+                    lambda r: r["Litros_Ticket"] * 1.030 * (r["Porcentaje_SU"] / 100.0) if r["Porcentaje_SU"] > 0 else 0.0, axis=1
                 )
 
                 tambos_tildados = set(
@@ -941,29 +951,27 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                 )
                 st.session_state[state_key] = tambos_tildados
 
-                df_macro_filtrado = df_macro[
-                    df_macro["Num_Tambo"].astype(str).isin(tambos_tildados)
-                ].copy()
                 df_ranking = df_base[df_base["Num_Tambo"].isin(tambos_tildados)].copy()
 
-                if df_macro_filtrado.empty:
+                if df_ranking.empty:
                     st.warning(
                         "Seleccione al menos un tambo en el checklist para calcular y exportar los datos."
                     )
                 else:
-                    tot_litros = df_macro_filtrado["Litros_Ticket"].sum()
-                    temp_p = calcular_promedio_ponderado(df_macro_filtrado, "Temperatura")
+                    tot_litros = df_ranking["Litros_Ticket"].sum()
+                    temp_p = calcular_promedio_ponderado(df_macro[df_macro["Num_Tambo"].isin(tambos_tildados)], "Temperatura")
                     
-                    df_macro_lab = df_macro_filtrado.dropna(subset=["Grasa", "Proteina"]).copy()
-                    grasa_p = calcular_promedio_ponderado(df_macro_lab, "Grasa")
-                    prot_p = calcular_promedio_ponderado(df_macro_lab, "Proteina")
+                    # Calcular promedios generales ponderados del ranking editado
+                    suma_litros = df_ranking["Litros_Ticket"].sum()
+                    grasa_p = float((df_ranking["Grasa_Ponderada"].fillna(0) * df_ranking["Litros_Ticket"]).sum() / suma_litros) if suma_litros > 0 else 0.0
+                    prot_p = float((df_ranking["Proteina_Ponderada"].fillna(0) * df_ranking["Litros_Ticket"]).sum() / suma_litros) if suma_litros > 0 else 0.0
                     
                     ratio_gp = (
                         grasa_p / prot_p if (prot_p and prot_p > 0) else float("nan")
                     )
 
                     st.markdown("---")
-                    st.markdown("##### 📈 Totales y Promedios Ponderados (Seleccionados)")
+                    st.markdown("##### 📈 Totales y Promedios Ponderados (Seleccionados y Editados)")
                     c1, c2, c3, c4, c5 = st.columns(5)
                     c1.metric("Litros Totales", formato_miles(tot_litros))
                     c2.metric(
@@ -996,7 +1004,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                     )
 
                     def generar_pdf_panel_general_con_calidad(
-                        df_macro,
                         periodo_titulo,
                         total_litros,
                         temp_prom,
@@ -1032,7 +1039,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                                 f" Ponderada: {grasa_str} | Prot. Ponderada: {prot_str}"
                             ),
                             f"Ratio Grasa / Proteína: {ratio_str}",
-                            "Ranking y Calidad de Tambos por Volumen (Filtrado)",
+                            "Ranking y Calidad de Tambos por Volumen (Filtrado y Editado)",
                         ]
                         headers = [
                             ("Código", 15),
@@ -1082,7 +1089,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                         )
 
                     pdf_bytes = generar_pdf_panel_general_con_calidad(
-                        df_macro_filtrado,
                         periodo_texto,
                         tot_litros,
                         temp_p,
