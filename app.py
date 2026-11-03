@@ -308,8 +308,12 @@ def generar_pdf_bytes(df_productor, tambo_nombre, tambo_id, periodo_texto, args_
     subtitulo = f"Productor: {tambo_nombre} (Código #{tambo_id})"
     
     temp_prom = calcular_promedio_ponderado(df_productor, "Temperatura")
-    grasa_prom = calcular_promedio_ponderado(df_productor, "Grasa")
-    prot_prom = calcular_promedio_ponderado(df_productor, "Proteina")
+    
+    # Ponderación estricta excluyendo remitos sin laboratorio
+    df_prod_lab = df_productor.dropna(subset=["Grasa", "Proteina"]).copy()
+    grasa_prom = calcular_promedio_ponderado(df_prod_lab, "Grasa")
+    prot_prom = calcular_promedio_ponderado(df_prod_lab, "Proteina")
+    
     crios_prom = calcular_promedio_ponderado(df_productor, "Crioscopia")
     ufc_prom = calcular_promedio_ponderado(df_productor, "UFC")
     scc_prom = calcular_promedio_ponderado(df_productor, "SCC")
@@ -808,7 +812,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
             if not df_macro.empty:
                 st.subheader("Ranking y Calidad por Tambo")
 
-                # 1. Agrupar datos base por tambo (Ponderación corregida por remitos analizados)
+                # 1. Agrupar datos base por tambo (Ponderación corregida exactamente igual al reporte por tambo)
                 base_ranking = []
                 for (num_t, tambo_n), group in df_macro.groupby(["Num_Tambo", "Tambo"]):
                     tot_l = group["Litros_Ticket"].sum()
@@ -836,11 +840,12 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                     else:
                         densidad_calc = d_pond
 
-                    # Sólidos útiles totales (Kg) sobre litros totales entregados en el período
+                    litros_lab_totales = group_lab["Litros_Ticket"].sum()
+                    
                     kg_solidos_utiles = (
-                        tot_l * densidad_calc * (porcentaje_su / 100.0)
-                        if porcentaje_su > 0
-                        else 0.0
+                        litros_lab_totales * densidad_calc * (porcentaje_su / 100.0)
+                        if porcentaje_su > 0 and litros_lab_totales > 0
+                        else (tot_l * densidad_calc * (porcentaje_su / 100.0) if porcentaje_su > 0 else 0.0)
                     )
 
                     base_ranking.append({
@@ -1749,7 +1754,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 df_lab_m = df_lab_m.dropna(subset=["Fecha", "Num_Tambo"])
                 
                 df_lab_m["_sample_str"] = df_lab_m[col_sample].astype(str)
-                df_lab_m = df_lab_m.sort_values(by=["_sample_str"])
+                df_lab_m["_sort_time"] = pd.to_datetime(df_lab_m[col_date], errors="coerce") if col_date else pd.NaT
+                df_lab_m = df_lab_m.sort_values(by=["Num_Tambo", "Fecha", "_sort_time"], ascending=[True, True, False])
                 df_lab_m["lab_index"] = df_lab_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
                 
                 map_cols = {}
@@ -1786,7 +1792,8 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
                 df_bac_m["Fecha"] = df_bac_m["Fecha_Extraida"].fillna(pd.to_datetime(df_bac_m[col_date_bac], dayfirst=True, errors="coerce").dt.normalize() if col_date_bac else pd.NaT)
                 df_bac_m = df_bac_m.dropna(subset=["Fecha", "Num_Tambo"])
                 
-                df_bac_m["_id_str"] = df_bac_m[col_sample_bac].astype(str)
+                df_bac_m["_sort_time"] = pd.to_datetime(df_bac_m[col_date_bac], errors="coerce") if col_date_bac else pd.NaT
+                df_bac_m = df_bac_m.sort_values(by=["Num_Tambo", "Fecha", "_sort_time"], ascending=[True, True, False])
                 df_bac_m["lab_index"] = df_bac_m.groupby(["Num_Tambo", "Fecha"]).cumcount()
                 
                 map_cols_bac = {}
