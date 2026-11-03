@@ -1039,7 +1039,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                                 f" Ponderada: {grasa_str} | Prot. Ponderada: {prot_str}"
                             ),
                             f"Ratio Grasa / Proteína: {ratio_str}",
-                            "Ranking y Calidad de Tambos por Volumen (Filtrado y Editado)",
+                            "",
                         ]
                         headers = [
                             ("Código", 15),
@@ -1080,7 +1080,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
                             ),
                         ]
                         return generar_pdf_base(
-                            "Informe de Recolección y Calidad - Cooperativa",
+                            "Informe de Recolección y Calidad - Coopagro",
                             f"Período Evaluado: {periodo_titulo}",
                             metricas,
                             headers,
