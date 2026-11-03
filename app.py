@@ -189,7 +189,7 @@ def calcular_promedio_ponderado(df: pd.DataFrame, columna_valor: str, columna_pe
   s_val = pd.to_numeric(df[columna_valor].astype(str).str.replace(",", "."), errors="coerce")
   s_peso = pd.to_numeric(df[columna_peso].astype(str).str.replace(",", "."), errors="coerce")
   
-  mask = s_val.notna() & s_peso.notna() & (s_peso > 0)
+  mask = s_val.notna() & (s_val > 0) & s_peso.notna() & (s_peso > 0)
   if not mask.any():
     return float("nan")
     
@@ -1425,13 +1425,50 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         df_per = df_periodo[df_periodo["Num_Tambo"] == str(t_id)].copy()
 
         if not df_per.empty:
-          df_per["Porcentaje_SU"] = df_per["Grasa"].fillna(0) + df_per[
-              "Proteina"
-          ].fillna(0)
-          df_per["Densidad_Calc"] = df_per["Densidad"].fillna(1.030)
-          df_per["Uso_Estandar"] = df_per["Densidad"].isna() | (
-              df_per["Densidad"] <= 0
+          st.info("💡 Podés hacer doble clic en cualquier celda para corregir o poner en 0 una muestra aberrante. Los promedios y reportes PDF se recalcularán automáticamente.")
+
+          # Preparar tabla editable interactiva
+          df_editable = df_per[["Fecha", "N_Remito", "Litros_Ticket", "Temperatura", "Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]].copy()
+          df_editable["Fecha_Fmt"] = df_editable["Fecha"].dt.strftime("%d/%m/%Y")
+
+          edited_data = st.data_editor(
+              df_editable[["Fecha_Fmt", "N_Remito", "Litros_Ticket", "Temperatura", "Grasa", "Proteina", "Crioscopia", "UFC", "SCC"]].rename(columns={
+                  "Fecha_Fmt": "Fecha",
+                  "N_Remito": "N° Remito",
+                  "Litros_Ticket": "Litros",
+                  "Proteina": "Proteína"
+              }),
+              column_config={
+                  "Fecha": st.column_config.Column(disabled=True),
+                  "N° Remito": st.column_config.Column(disabled=True),
+                  "Litros": st.column_config.NumberColumn(format="%d"),
+                  "Temperatura": st.column_config.NumberColumn(format="%.1f °C"),
+                  "Grasa": st.column_config.NumberColumn(format="%.2f %%"),
+                  "Proteína": st.column_config.NumberColumn(format="%.2f %%"),
+                  "Crioscopia": st.column_config.NumberColumn(format="%.3f"),
+                  "UFC": st.column_config.NumberColumn(format="%d"),
+                  "SCC": st.column_config.NumberColumn(format="%d")
+              },
+              hide_index=True,
+              use_container_width=True,
+              key=f"editor_tambo_{t_id}_{periodo_sel}"
           )
+
+          # Actualizar df_per con los datos ingresados o editados a mano
+          df_per["Litros_Ticket"] = edited_data["Litros"]
+          df_per["Temperatura"] = edited_data["Temperatura"]
+
+          # Si se pone 0 o se borra el valor, se descarta (pd.NA) para no desvirtuar promedios ponderados
+          df_per["Grasa"] = edited_data["Grasa"].apply(lambda x: pd.NA if pd.isna(x) or float(x) <= 0 else float(x))
+          df_per["Proteina"] = edited_data["Proteína"].apply(lambda x: pd.NA if pd.isna(x) or float(x) <= 0 else float(x))
+          df_per["Crioscopia"] = edited_data["Crioscopia"].apply(lambda x: pd.NA if pd.isna(x) else float(x))
+          df_per["UFC"] = edited_data["UFC"].apply(lambda x: pd.NA if pd.isna(x) else float(x))
+          df_per["SCC"] = edited_data["SCC"].apply(lambda x: pd.NA if pd.isna(x) else float(x))
+
+          # Recalcular % Sólidos Útiles y Kg de Sólidos Útiles dinámicamente
+          df_per["Porcentaje_SU"] = df_per["Grasa"].fillna(0) + df_per["Proteina"].fillna(0)
+          df_per["Densidad_Calc"] = df_per["Densidad"].fillna(1.030)
+          df_per["Uso_Estandar"] = df_per["Densidad"].isna() | (df_per["Densidad"] <= 0)
           df_per["Kg_SU"] = (
               df_per["Litros_Ticket"]
               * df_per["Densidad_Calc"]
@@ -1497,6 +1534,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
               use_container_width=True,
           )
 
+          # Matriz visual formateada
           df_tabla_visual = pd.DataFrame()
           df_tabla_visual["Fecha"] = df_per["Fecha"].dt.strftime("%d/%m/%Y")
           df_tabla_visual["N° Remito"] = df_per["N_Remito"]
