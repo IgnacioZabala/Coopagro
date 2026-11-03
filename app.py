@@ -103,7 +103,8 @@ def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
     xls_remitos = pd.ExcelFile(archivo_remitos)
     sheet_remitos = next((s for s in xls_remitos.sheet_names if "od-pro-03" in s.lower()), xls_remitos.sheet_names[0])
     sheet_contactos = next((s for s in xls_remitos.sheet_names if "codigo tambo" in s.lower().replace("ó", "o")), None)
-    df_remitos_raw = pd.read_excel(xls_remitos, sheet_name=sheet_remitos, skiprows=4, usecols="B:K")
+    # Lectura corregida: C a J (C=Fecha, D=N°Remito, E=Num_Tambo, F=Tambo, G=Litros Ticket, H=Litros Planilla, I=Diferencia, J=Temperatura)
+    df_remitos_raw = pd.read_excel(xls_remitos, sheet_name=sheet_remitos, skiprows=3, usecols="C:J")
     if sheet_contactos:
       df_contactos = pd.read_excel(xls_remitos, sheet_name=sheet_contactos)
   except Exception as e:
@@ -113,7 +114,7 @@ def cargar_datos_coopagro(u_remitos, u_lab, u_bacsomatic):
     archivo_lab = descargar_excel_drive(u_lab)
     df_lab_temp = pd.read_excel(archivo_lab, header=None, nrows=20, engine='openpyxl')
     header_row = encontrar_fila_encabezado(df_lab_temp, ["sample", "fat", "protein", "grasa"])
-    archivo_lab.seek(0) # Retornamos el puntero al inicio para leer con el header correcto
+    archivo_lab.seek(0)
     df_lab = pd.read_excel(archivo_lab, header=header_row, engine='openpyxl')
     df_lab.columns = df_lab.columns.astype(str).str.strip()
   except Exception as e:
@@ -473,7 +474,8 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         if col_email is not None:
           df_contactos["Email"] = df_c_temp[col_email]
 
-    df = df_raw.iloc[:, :10].copy()
+    # Mapeo de las 8 columnas leídas de C:J
+    df = df_raw.iloc[:, :8].copy()
     df.columns = [
         "Fecha",
         "N_Remito",
@@ -483,8 +485,6 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         "Litros_Planilla",
         "Diferencia",
         "Temperatura",
-        "Grasa",
-        "Proteina",
     ]
     df["Num_Tambo"] = df["Num_Tambo"].apply(limpiar_tambo)
     df["Fecha"] = pd.to_datetime(
@@ -492,7 +492,7 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
     ).dt.normalize()
     df = df.dropna(subset=["Fecha"])
 
-    for num_col in ["Litros_Ticket", "Litros_Planilla", "Diferencia", "Temperatura", "Grasa", "Proteina"]:
+    for num_col in ["Litros_Ticket", "Litros_Planilla", "Diferencia", "Temperatura"]:
       if num_col in df.columns:
         df[num_col] = pd.to_numeric(df[num_col].astype(str).str.replace(",", "."), errors="coerce")
 
@@ -1985,7 +1985,9 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       archivo_remitos_p = descargar_excel_drive(url_remitos_limpia)
       xls_remitos_p = pd.ExcelFile(archivo_remitos_p)
       hoja_remitos_p = next((s for s in xls_remitos_p.sheet_names if "od-pro-03" in s.lower()), xls_remitos_p.sheet_names[0])
-      raw_recibo = pd.read_excel(xls_remitos_p, sheet_name=hoja_remitos_p, skiprows=4, usecols="B:K")
+      
+      # Lectura alineada a C:J para Módulo 3
+      raw_recibo = pd.read_excel(xls_remitos_p, sheet_name=hoja_remitos_p, skiprows=3, usecols="C:J")
       df_recibo = pd.DataFrame()
       df_recibo['Fecha'] = pd.to_datetime(raw_recibo.iloc[:, 0], format="mixed", dayfirst=True, errors='coerce').dt.normalize()
       df_recibo['Litros Ingresados'] = pd.to_numeric(raw_recibo.iloc[:, 4], errors='coerce').fillna(0)
