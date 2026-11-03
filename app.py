@@ -182,11 +182,21 @@ def extraer_fecha_texto(texto) -> pd.Timestamp:
   return pd.NaT
 
 def calcular_promedio_ponderado(df: pd.DataFrame, columna_valor: str, columna_peso: str = "Litros_Ticket") -> float:
-  if columna_valor not in df.columns or columna_peso not in df.columns: return float("nan")
-  df_valido = df[[columna_valor, columna_peso]].dropna()
-  peso_total = df_valido[columna_peso].sum()
-  if peso_total == 0: return float("nan")
-  return (df_valido[columna_valor] * df_valido[columna_peso]).sum() / peso_total
+  if df.empty or columna_valor not in df.columns or columna_peso not in df.columns:
+    return float("nan")
+  
+  s_val = pd.to_numeric(df[columna_valor].astype(str).str.replace(",", "."), errors="coerce")
+  s_peso = pd.to_numeric(df[columna_peso].astype(str).str.replace(",", "."), errors="coerce")
+  
+  mask = s_val.notna() & s_peso.notna() & (s_peso > 0)
+  if not mask.any():
+    return float("nan")
+    
+  peso_total = s_peso[mask].sum()
+  if peso_total == 0:
+    return float("nan")
+    
+  return float((s_val[mask] * s_peso[mask]).sum() / peso_total)
 
 def clasificar_lote_general(lote_str):
   if not isinstance(lote_str, str) or len(lote_str) < 8: return "Desconocido", "Otro"
@@ -481,6 +491,11 @@ if modulo_principal == "🥛 Recepción y Calidad Coopagro":
         df["Fecha"], format="mixed", dayfirst=True, errors="coerce"
     ).dt.normalize()
     df = df.dropna(subset=["Fecha"])
+
+    for num_col in ["Litros_Ticket", "Litros_Planilla", "Diferencia", "Temperatura", "Grasa", "Proteina"]:
+      if num_col in df.columns:
+        df[num_col] = pd.to_numeric(df[num_col].astype(str).str.replace(",", "."), errors="coerce")
+
     for col in ["Grasa", "Proteina", "Crioscopia", "Densidad", "UFC", "SCC"]:
       if col not in df.columns:
         df[col] = pd.NA
@@ -1615,9 +1630,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       hoja_prod_mast = "2026" if "2026" in xls_prod_mast.sheet_names else xls_prod_mast.sheet_names[-1]
       raw_prod = pd.read_excel(xls_prod_mast, sheet_name=hoja_prod_mast, skiprows=6)
       
-      # -------------------------------------------------------------
-      # CORRECCIÓN EN MÓDULO 2 (FASÓN)
-      # -------------------------------------------------------------
       raw_prod.columns = raw_prod.columns.astype(str).str.strip()
       col_l_proc = next((c for c in raw_prod.columns if 'procesados' in c.lower()), raw_prod.columns[3] if len(raw_prod.columns) > 3 else None)
       col_pt = next((c for c in raw_prod.columns if 'terminado' in c.lower()), raw_prod.columns[4] if len(raw_prod.columns) > 4 else None)
@@ -1636,7 +1648,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
       
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col].astype(str).str.replace(',', '.'), errors="coerce").fillna(0)
-      # -------------------------------------------------------------
       
       if len(df_prod) > 0: 
           df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod["Lote"].astype(str).apply(clasificar_lote_general))
@@ -1792,7 +1803,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
         if not df_mhsa_f.empty:
             df_m_disp = df_mhsa_f.sort_values(by=["Fecha", "Num_Tambo"]).copy()
             
-            # CÁLCULO DE SÓLIDOS ÚTILES
             df_m_disp["Porcentaje_SU"] = df_m_disp["Grasa"].fillna(0) + df_m_disp["Proteina"].fillna(0)
             df_m_disp["Densidad_Calc"] = df_m_disp["Densidad"].fillna(1.030)
             df_m_disp["Uso_Estandar"] = df_m_disp["Densidad"].isna() | (df_m_disp["Densidad"] <= 0)
@@ -1837,7 +1847,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             st.markdown("---")
             df_pdf_rec = df_m_disp.copy()
             
-            # 1. Renombramos las columnas a nombres válidos para Python (sin espacios ni símbolos)
             df_pdf_rec = df_pdf_rec.rename(columns={
                 "Num Tambo": "Num_Tambo",
                 "Proteína": "Proteina",
@@ -1849,7 +1858,6 @@ elif modulo_principal == "🚛 Recepción Mastellone (Fasón)":
             
             headers_pdf_rec = [("Fecha", 20), ("Código", 16), ("Tambo", 30), ("Litros", 16), ("Temp", 12), ("Grasa", 14), ("Prot", 14), ("% SU", 14), ("Kg SU", 18), ("UFC", 18), ("SCC", 18)]
             
-            # 2. Actualizamos el mapeo para usar los nuevos nombres seguros
             mapeo_pdf_rec = [
                 lambda r: str(getattr(r, "Fecha", "")),
                 lambda r: str(getattr(r, "Num_Tambo", "-")),
@@ -1949,9 +1957,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
           
       raw_prod = pd.read_excel(xls_prod, sheet_name=hoja_prod, skiprows=6)
       
-      # -------------------------------------------------------------
-      # CORRECCIÓN EN MÓDULO 3 (COOPAGRO)
-      # -------------------------------------------------------------
       raw_prod.columns = raw_prod.columns.astype(str).str.strip()
       col_l_proc = next((c for c in raw_prod.columns if 'procesados' in c.lower()), raw_prod.columns[3] if len(raw_prod.columns) > 3 else None)
       col_pt = next((c for c in raw_prod.columns if 'terminado' in c.lower()), raw_prod.columns[4] if len(raw_prod.columns) > 4 else None)
@@ -1970,7 +1975,6 @@ elif modulo_principal == "🧀 Producción y Rendimiento":
       
       for col in ["Litros Procesados", "Producto Terminado", "PNC"]: 
           df_prod[col] = pd.to_numeric(df_prod[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
-      # -------------------------------------------------------------
 
       df_prod["Producto"], df_prod["Grupo"] = zip(*df_prod['Lote'].apply(clasificar_lote_general))
       df_prod['Año'] = df_prod['Fecha'].dt.year
@@ -2276,9 +2280,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 hoja_p_ins = "2026" if "2026" in xls_prod_ins.sheet_names else xls_prod_ins.sheet_names[-1]
                 raw_p_ins = pd.read_excel(xls_prod_ins, sheet_name=hoja_p_ins, skiprows=6)
                 
-                # -------------------------------------------------------------
-                # CORRECCIÓN EN MÓDULO 4 (INSUMOS Y COSTOS)
-                # -------------------------------------------------------------
                 raw_p_ins.columns = raw_p_ins.columns.astype(str).str.strip()
                 col_l_proc = next((c for c in raw_p_ins.columns if 'procesados' in c.lower()), raw_p_ins.columns[3] if len(raw_p_ins.columns) > 3 else None)
                 col_pt = next((c for c in raw_p_ins.columns if 'terminado' in c.lower()), raw_p_ins.columns[4] if len(raw_p_ins.columns) > 4 else None)
@@ -2291,7 +2292,6 @@ elif modulo_principal == "📦 Insumos, Inventario y Costos":
                 df_p_ins['Prod Terminado'] = pd.to_numeric(raw_p_ins[col_pt].astype(str).str.replace(',', '.'), errors='coerce').fillna(0) if col_pt else 0
                 df_p_ins['PNC'] = pd.to_numeric(raw_p_ins[col_pnc].astype(str).str.replace(',', '.'), errors='coerce').fillna(0) if col_pnc else 0
                 df_p_ins = df_p_ins.dropna(subset=['Fecha', 'Lote'])
-                # -------------------------------------------------------------
                 
                 _, df_p_ins['Grupo'] = zip(*df_p_ins['Lote'].apply(clasificar_lote_general))
                 df_p_mes = df_p_ins[(df_p_ins['Grupo'] == 'Coopagro') & (df_p_ins['Fecha'].dt.year == filtro_anio_costo) & (df_p_ins['Fecha'].dt.month == filtro_mes_costo)]
